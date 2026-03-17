@@ -1,10 +1,15 @@
+pub mod discovery;
+pub mod liveness;
 pub mod monitor;
 pub mod parser;
-
-use std::time::Duration;
+pub mod reducer;
+pub mod session_reader;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
+pub use monitor::start_monitor;
+pub use parser::SessionEvent;
 
 pub const CODEX_STATUS_EVENT: &str = "waifudex://codex-status";
 
@@ -43,39 +48,6 @@ impl StatusPayload {
     }
 }
 
-pub fn demo_sequence() -> Vec<StatusPayload> {
-    [
-        StatusKind::Idle,
-        StatusKind::Thinking,
-        StatusKind::Writing,
-        StatusKind::RunningTests,
-        StatusKind::Success,
-        StatusKind::Error,
-    ]
-    .into_iter()
-    .map(|status| StatusPayload::new(status, "demo"))
-    .collect()
-}
-
-pub fn start_demo_emitter(app: AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        let sequence = demo_sequence();
-        if sequence.is_empty() {
-            return;
-        }
-
-        let mut ticker = tokio::time::interval(Duration::from_secs(3));
-        let mut index = 0usize;
-
-        loop {
-            let payload = sequence[index % sequence.len()].clone();
-            let _ = app.emit(CODEX_STATUS_EVENT, payload);
-            index += 1;
-            ticker.tick().await;
-        }
-    });
-}
-
 fn describe_status(status: StatusKind) -> (&'static str, &'static str) {
     match status {
         StatusKind::Idle => (
@@ -106,13 +78,8 @@ fn describe_status(status: StatusKind) -> (&'static str, &'static str) {
 }
 
 fn timestamp_for(status: StatusKind) -> String {
-    match status {
-        StatusKind::Idle => "2026-03-17T06:50:00.000Z",
-        StatusKind::Thinking => "2026-03-17T06:50:15.000Z",
-        StatusKind::Writing => "2026-03-17T06:50:30.000Z",
-        StatusKind::RunningTests => "2026-03-17T06:50:45.000Z",
-        StatusKind::Success => "2026-03-17T06:51:00.000Z",
-        StatusKind::Error => "2026-03-17T06:51:15.000Z",
-    }
-    .to_string()
+    let _ = status;
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }

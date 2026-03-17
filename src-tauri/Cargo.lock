@@ -3987,6 +3987,7 @@ dependencies = [
  "sysinfo",
  "tauri",
  "tauri-build",
+ "time",
  "tokio",
 ]
 

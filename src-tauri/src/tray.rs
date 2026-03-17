@@ -6,7 +6,7 @@ use tauri::{
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
-        .text("toggle-window", "Show / Hide")
+        .text("toggle-window", "Toggle Window")
         .separator()
         .text("quit", "Quit")
         .build()?;
