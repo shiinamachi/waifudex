@@ -11,9 +11,13 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .text("quit", "Quit")
         .build()?;
 
-    TrayIconBuilder::with_id("waifudex-tray")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
+    let mut tray = TrayIconBuilder::with_id("waifudex-tray").menu(&menu);
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray = tray.icon(icon);
+    }
+
+    tray.show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "toggle-window" => {
                 let _ = crate::window::toggle_main_window(app);

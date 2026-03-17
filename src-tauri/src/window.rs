@@ -20,7 +20,7 @@ impl WindowVisibilityPolicy {
         Self {
             grace_polls,
             idle_polls: 0,
-            visible: false,
+            visible: true,
         }
     }
 
@@ -70,7 +70,8 @@ impl WindowVisibilityPolicy {
 }
 
 pub fn configure_main_window(app: &AppHandle) -> tauri::Result<()> {
-    hide_main_window(app)
+    let _ = app;
+    Ok(())
 }
 
 pub fn show_main_window(app: &AppHandle) -> tauri::Result<()> {
@@ -108,10 +109,10 @@ mod window_policy_tests {
     use crate::window::{WindowCommand, WindowVisibilityPolicy};
 
     #[test]
-    fn starts_hidden_when_idle() {
+    fn starts_visible_on_app_launch() {
         let mut policy = WindowVisibilityPolicy::new(2);
 
-        assert!(!policy.is_visible());
+        assert!(policy.is_visible());
         assert_eq!(policy.on_status(StatusKind::Idle), WindowCommand::Noop);
     }
 
@@ -119,7 +120,7 @@ mod window_policy_tests {
     fn shows_on_first_active_status() {
         let mut policy = WindowVisibilityPolicy::new(2);
 
-        assert_eq!(policy.on_status(StatusKind::Thinking), WindowCommand::Show);
+        assert_eq!(policy.on_status(StatusKind::Thinking), WindowCommand::Noop);
         assert!(policy.is_visible());
     }
 
