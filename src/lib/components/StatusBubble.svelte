@@ -32,6 +32,10 @@
         <dd>{snapshot.revision}</dd>
       </div>
       <div>
+        <dt>Sessions Root</dt>
+        <dd>{snapshot.sessionsRoot}</dd>
+      </div>
+      <div>
         <dt>Updated</dt>
         <dd>{snapshot.updatedAt}</dd>
       </div>

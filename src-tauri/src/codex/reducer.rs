@@ -22,6 +22,7 @@ impl StatusReducer {
         &mut self,
         event: Option<&SessionEvent>,
         session_id: Option<String>,
+        sessions_root: &str,
         liveness: LivenessSnapshot,
     ) -> RuntimeSnapshot {
         let status = match event {
@@ -62,7 +63,7 @@ impl StatusReducer {
             }
         };
 
-        snapshot_for_status(status, self.source.clone(), session_id)
+        snapshot_for_status(status, self.source.clone(), session_id, sessions_root)
     }
 }
 
@@ -114,6 +115,7 @@ mod reducer_tests {
         let payload = reducer.reduce(
             Some(&SessionEvent::TaskStarted),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::offline(),
         );
 
@@ -128,6 +130,7 @@ mod reducer_tests {
                 tool_name: "cargo test".to_string(),
             }),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
 
@@ -142,6 +145,7 @@ mod reducer_tests {
                 tool_name: "apply_patch".to_string(),
             }),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
 
@@ -156,6 +160,7 @@ mod reducer_tests {
                 message: "permission denied".to_string(),
             }),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
 
@@ -165,7 +170,12 @@ mod reducer_tests {
     #[test]
     fn no_recent_events_and_no_live_process_reduce_to_idle() {
         let mut reducer = StatusReducer::new("monitor");
-        let payload = reducer.reduce(None, None, LivenessSnapshot::offline());
+        let payload = reducer.reduce(
+            None,
+            None,
+            "/home/tester/.codex/sessions",
+            LivenessSnapshot::offline(),
+        );
 
         assert_eq!(payload.status, StatusKind::Idle);
     }
@@ -178,6 +188,7 @@ mod reducer_tests {
                 tool_name: "cargo test".to_string(),
             }),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
 
@@ -186,6 +197,7 @@ mod reducer_tests {
         let retained = reducer.reduce(
             None,
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
         assert_eq!(retained.status, StatusKind::RunningTests);
@@ -199,12 +211,14 @@ mod reducer_tests {
                 tool_name: "cargo test".to_string(),
             }),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
 
         let payload = reducer.reduce(
             Some(&SessionEvent::ToolCallCompleted),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
         assert_eq!(payload.status, StatusKind::Thinking);
@@ -216,16 +230,23 @@ mod reducer_tests {
         let _ = reducer.reduce(
             Some(&SessionEvent::TaskStarted),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
         let done = reducer.reduce(
             Some(&SessionEvent::TaskCompleted),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
         assert_eq!(done.status, StatusKind::Success);
 
-        let idle = reducer.reduce(None, None, LivenessSnapshot::online());
+        let idle = reducer.reduce(
+            None,
+            None,
+            "/home/tester/.codex/sessions",
+            LivenessSnapshot::online(),
+        );
         assert_eq!(idle.status, StatusKind::Idle);
     }
 
@@ -235,10 +256,16 @@ mod reducer_tests {
         let _ = reducer.reduce(
             Some(&SessionEvent::TaskStarted),
             Some("session-a".to_string()),
+            "/home/tester/.codex/sessions",
             LivenessSnapshot::online(),
         );
 
-        let idle = reducer.reduce(None, None, LivenessSnapshot::offline());
+        let idle = reducer.reduce(
+            None,
+            None,
+            "/home/tester/.codex/sessions",
+            LivenessSnapshot::offline(),
+        );
         assert_eq!(idle.status, StatusKind::Idle);
     }
 }

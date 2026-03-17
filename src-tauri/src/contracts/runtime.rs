@@ -9,6 +9,7 @@ pub const RUNTIME_EVENT_STREAM: &str = "waifudex://runtime-event";
 #[ts(rename_all = "snake_case")]
 pub enum RuntimeStatus {
     Idle,
+    CodexNotInstalled,
     Thinking,
     Writing,
     RunningTests,
@@ -24,6 +25,7 @@ pub struct RuntimeSnapshot {
     pub status: RuntimeStatus,
     pub summary: String,
     pub detail: String,
+    pub sessions_root: String,
     pub source: String,
     pub updated_at: String,
     #[ts(type = "number")]
@@ -107,6 +109,9 @@ mod runtime_contract_tests {
     fn runtime_status_serializes_to_snake_case() {
         let value = serde_json::to_value(RuntimeStatus::RunningTests).expect("serialize status");
         assert_eq!(value, json!("running_tests"));
+        let value =
+            serde_json::to_value(RuntimeStatus::CodexNotInstalled).expect("serialize status");
+        assert_eq!(value, json!("codex_not_installed"));
     }
 
     #[test]
@@ -116,6 +121,7 @@ mod runtime_contract_tests {
             status: RuntimeStatus::Thinking,
             summary: "Thinking through the next change".to_string(),
             detail: "Codex is reviewing context and planning.".to_string(),
+            sessions_root: "/home/tester/.codex/sessions".to_string(),
             source: "monitor".to_string(),
             updated_at: "2026-03-17T06:50:15.000Z".to_string(),
             revision: 42,
@@ -124,6 +130,7 @@ mod runtime_contract_tests {
         let value = serde_json::to_value(snapshot).expect("serialize snapshot");
         assert_eq!(value["updatedAt"], json!("2026-03-17T06:50:15.000Z"));
         assert_eq!(value["sessionId"], json!("session-123"));
+        assert_eq!(value["sessionsRoot"], json!("/home/tester/.codex/sessions"));
         assert_eq!(value["revision"], json!(42));
     }
 
@@ -138,6 +145,7 @@ mod runtime_contract_tests {
     fn runtime_snapshot_typescript_decl_uses_camel_case_fields() {
         let decl = RuntimeSnapshot::decl(&ts_rs::Config::default());
         assert!(decl.contains("sessionId"));
+        assert!(decl.contains("sessionsRoot"));
         assert!(decl.contains("updatedAt"));
         assert!(decl.contains("revision: number"));
     }

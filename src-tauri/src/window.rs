@@ -84,16 +84,9 @@ impl WindowVisibilityPolicy {
                     WindowCommand::Noop
                 }
             }
-            StatusKind::Error => {
-                self.idle_polls = 0;
-                if self.visible {
-                    WindowCommand::Noop
-                } else {
-                    self.visible = true;
-                    WindowCommand::Show
-                }
-            }
-            StatusKind::Thinking
+            StatusKind::Error
+            | StatusKind::CodexNotInstalled
+            | StatusKind::Thinking
             | StatusKind::Writing
             | StatusKind::RunningTests
             | StatusKind::Success => {
@@ -232,6 +225,18 @@ mod window_policy_tests {
         let _ = policy.on_status(StatusKind::Thinking);
 
         assert_eq!(policy.on_status(StatusKind::Error), WindowCommand::Noop);
+        assert!(policy.is_visible());
+    }
+
+    #[test]
+    fn keeps_the_window_visible_when_codex_is_not_installed() {
+        let mut policy = WindowVisibilityPolicy::new(2);
+        let _ = policy.on_status(StatusKind::Thinking);
+
+        assert_eq!(
+            policy.on_status(StatusKind::CodexNotInstalled),
+            WindowCommand::Noop
+        );
         assert!(policy.is_visible());
     }
 

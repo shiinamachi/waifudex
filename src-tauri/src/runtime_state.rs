@@ -138,6 +138,7 @@ mod runtime_state_tests {
             status: RuntimeStatus::Thinking,
             summary: "Thinking through the next change".to_string(),
             detail: "Codex is reviewing context and planning.".to_string(),
+            sessions_root: "/home/tester/.codex/sessions".to_string(),
             source: "monitor".to_string(),
             updated_at: "2026-03-17T06:50:15.000Z".to_string(),
             revision: 0,

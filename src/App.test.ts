@@ -61,6 +61,7 @@ describe("Runtime UI rendering", () => {
         status: "thinking",
         summary: "Thinking through the next change",
         detail: "Codex is reviewing context and planning the next edit.",
+        sessionsRoot: "/home/tester/.codex/sessions",
         source: "monitor",
         updatedAt: "2026-03-17T06:50:15.000Z",
         revision: 3,
@@ -70,6 +71,30 @@ describe("Runtime UI rendering", () => {
     expect(html).toContain("Thinking through the next change");
     expect(html).toContain(
       "Codex is reviewing context and planning the next edit.",
+    );
+    expect(html).toContain("Sessions Root");
+    expect(html).toContain("/home/tester/.codex/sessions");
+  });
+
+  it("renders the codex_not_installed status when the sessions root is missing", async () => {
+    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
+      loading: false,
+      snapshot: {
+        sessionId: null,
+        status: "codex_not_installed",
+        summary: "Codex sessions root not found",
+        detail: "Waifudex could not find the configured Codex sessions directory.",
+        sessionsRoot: "/home/tester/.codex/sessions",
+        source: "monitor",
+        updatedAt: "2026-03-18T00:00:00.000Z",
+        revision: 0,
+      },
+    });
+
+    expect(html).toContain("codex_not_installed");
+    expect(html).toContain("Codex sessions root not found");
+    expect(html).toContain(
+      "Waifudex could not find the configured Codex sessions directory.",
     );
   });
 

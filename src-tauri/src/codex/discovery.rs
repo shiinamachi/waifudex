@@ -75,17 +75,37 @@ fn visit_rollouts(root: &Path, visitor: &mut dyn FnMut(&Path) -> io::Result<()>)
         return Ok(());
     }
 
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => return Ok(()),
+        Err(error) => return Err(error),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => continue,
+            Err(error) => return Err(error),
+        };
         let path = entry.path();
 
-        if entry.file_type()?.is_dir() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => continue,
+            Err(error) => return Err(error),
+        };
+
+        if file_type.is_dir() {
             visit_rollouts(&path, visitor)?;
             continue;
         }
 
         if is_rollout_path(&path) {
-            visitor(&path)?;
+            match visitor(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::PermissionDenied => continue,
+                Err(error) => return Err(error),
+            }
         }
     }
 
@@ -173,6 +193,33 @@ mod discovery_tests {
 
         assert!(active.is_none());
 
+        fs::remove_dir_all(root).expect("cleanup temp sessions root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignores_unreadable_descendant_directories_during_discovery() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = create_temp_sessions_root();
+        let readable = root.join("2026/03/17/rollout-readable.jsonl");
+        let blocked_dir = root.join("2026/03/18/blocked");
+
+        write_rollout(&readable, "{}\n");
+        fs::create_dir_all(&blocked_dir).expect("create blocked directory");
+        fs::set_permissions(&blocked_dir, fs::Permissions::from_mode(0o000))
+            .expect("mark blocked directory unreadable");
+
+        let mut discovery = SessionDiscovery::new(root.clone());
+        let active = discovery
+            .select_active_session()
+            .expect("discovery should skip unreadable descendants")
+            .expect("readable rollout should still be selected");
+
+        assert_eq!(active.path, readable);
+
+        fs::set_permissions(&blocked_dir, fs::Permissions::from_mode(0o755))
+            .expect("restore blocked directory permissions");
         fs::remove_dir_all(root).expect("cleanup temp sessions root");
     }
 

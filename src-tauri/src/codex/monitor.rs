@@ -1,8 +1,14 @@
-use std::{io, path::PathBuf, time::Duration};
+use std::{
+    ffi::OsStr,
+    io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
+    codex::backend::{local_fs::LocalFsBackend, wsl_command::WslCommandBackend, SessionBackend},
     contracts::{
         RuntimeEvent, RuntimeEventPayload, RuntimeSnapshot, RUNTIME_EVENT_STREAM,
         RUNTIME_SNAPSHOT_EVENT,
@@ -11,13 +17,13 @@ use crate::{
 };
 
 use super::{
-    discovery::SessionDiscovery,
     liveness::{LivenessProbe, LivenessSnapshot},
     parser::parse_session_line,
     reducer::StatusReducer,
-    session_reader::SessionReader,
-    StatusKind,
+    snapshot_for_status, StatusKind,
 };
+
+const MONITOR_POLL_INTERVAL_MS: u64 = 250;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TimelineRecord {
@@ -60,8 +66,7 @@ pub(crate) struct TickEmissions {
 
 pub struct MonitorSupervisor {
     source: String,
-    discovery: SessionDiscovery,
-    reader: SessionReader,
+    backend: Box<dyn SessionBackend>,
     reducer: StatusReducer,
     last_status: Option<StatusKind>,
     last_material: Option<SnapshotMaterial>,
@@ -70,11 +75,18 @@ pub struct MonitorSupervisor {
 
 impl MonitorSupervisor {
     pub fn new(sessions_root: PathBuf, source: impl Into<String>) -> Self {
+        Self::from_backend(LocalFsBackend::new(sessions_root), source)
+    }
+
+    pub fn from_backend(backend: impl SessionBackend + 'static, source: impl Into<String>) -> Self {
+        Self::from_boxed_backend(Box::new(backend), source)
+    }
+
+    pub fn from_boxed_backend(backend: Box<dyn SessionBackend>, source: impl Into<String>) -> Self {
         let source = source.into();
         Self {
             source: source.clone(),
-            discovery: SessionDiscovery::new(sessions_root),
-            reader: SessionReader::new(),
+            backend,
             reducer: StatusReducer::new(source),
             last_status: None,
             last_material: None,
@@ -85,13 +97,26 @@ impl MonitorSupervisor {
     pub(crate) fn tick(&mut self, liveness: LivenessSnapshot) -> io::Result<TickOutput> {
         let mut timeline_records = Vec::new();
 
-        let snapshot_candidate = if let Some(candidate) = self.discovery.select_active_session()? {
+        let snapshot_candidate = if !self.backend.sessions_root_available() {
+            self.active_session_path = None;
+            snapshot_for_status(
+                StatusKind::CodexNotInstalled,
+                self.source.clone(),
+                None,
+                self.backend.sessions_root_display().to_string(),
+            )
+        } else if let Some(candidate) = self.backend.select_active_session()? {
             self.active_session_path = Some(candidate.path.clone());
-            let session_id = Some(candidate.path.display().to_string());
-            let lines = self.reader.read_new_lines(&candidate.path)?;
+            let session_id = Some(candidate.session_id.clone());
+            let lines = self.backend.read_new_lines(&candidate)?;
 
             if lines.is_empty() {
-                self.reducer.reduce(None, session_id, liveness)
+                self.reducer.reduce(
+                    None,
+                    session_id,
+                    self.backend.sessions_root_display(),
+                    liveness,
+                )
             } else {
                 let mut latest_snapshot = None;
                 for line in lines {
@@ -107,6 +132,7 @@ impl MonitorSupervisor {
                     latest_snapshot = Some(self.reducer.reduce(
                         Some(&event),
                         session_id.clone(),
+                        self.backend.sessions_root_display(),
                         liveness,
                     ));
                 }
@@ -114,9 +140,9 @@ impl MonitorSupervisor {
             }
         } else {
             self.active_session_path = None;
-            self.reducer.reduce(None, None, liveness)
+            self.reducer
+                .reduce(None, None, self.backend.sessions_root_display(), liveness)
         };
-
         let material = SnapshotMaterial::from_snapshot(&snapshot_candidate);
         let snapshot = if self.last_material == Some(material.clone()) {
             None
@@ -138,6 +164,26 @@ impl MonitorSupervisor {
 
     pub fn current_session_path(&self) -> Option<&std::path::Path> {
         self.active_session_path.as_deref()
+    }
+
+    fn maybe_refresh_backend(&mut self) {
+        if !cfg!(windows) {
+            return;
+        }
+
+        let should_refresh = !self.backend.sessions_root_available()
+            || (self.backend.backend_kind() == "local_fs" && self.active_session_path.is_none());
+        if !should_refresh {
+            return;
+        }
+
+        let next_backend = select_session_backend();
+        let backend_changed = self.backend.backend_kind() != next_backend.backend_kind()
+            || self.backend.sessions_root_display() != next_backend.sessions_root_display();
+        if backend_changed {
+            self.backend = next_backend;
+            self.active_session_path = None;
+        }
     }
 }
 
@@ -172,14 +218,16 @@ pub(crate) fn collect_tick_emissions(
 
 pub fn start_monitor(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut supervisor = MonitorSupervisor::new(default_sessions_root(), "monitor");
+        let backend = select_session_backend();
+        let mut supervisor = MonitorSupervisor::from_boxed_backend(backend, "monitor");
         let probe = LivenessProbe::new("codex");
-        let mut ticker = tokio::time::interval(Duration::from_secs(1));
+        let mut ticker = tokio::time::interval(Duration::from_millis(MONITOR_POLL_INTERVAL_MS));
         let mut last_logged_session: Option<PathBuf> = None;
         let mut last_logged_status: Option<StatusKind> = None;
 
         loop {
             ticker.tick().await;
+            supervisor.maybe_refresh_backend();
 
             let runtime_state = app.state::<RuntimeState>();
             match collect_tick_emissions(&mut supervisor, &runtime_state, probe.snapshot()) {
@@ -236,6 +284,48 @@ pub fn start_monitor(app: AppHandle) {
     });
 }
 
+fn select_session_backend() -> Box<dyn SessionBackend> {
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let is_windows = cfg!(windows);
+    let userprofile = std::env::var_os("USERPROFILE");
+    let primary = default_sessions_root_from_env(
+        std::env::var_os("HOME").as_deref(),
+        userprofile.as_deref(),
+        &current_dir,
+        is_windows,
+    );
+    let local_observable = sessions_root_is_observable(&primary);
+
+    let mut local_backend = LocalFsBackend::new(primary.clone());
+    let local_has_active_session = local_backend
+        .select_active_session()
+        .ok()
+        .flatten()
+        .is_some();
+    if local_observable && local_has_active_session {
+        return Box::new(local_backend);
+    }
+
+    if is_windows {
+        let preferred_user = userprofile
+            .as_deref()
+            .map(Path::new)
+            .and_then(Path::file_name)
+            .and_then(OsStr::to_str)
+            .map(ToString::to_string);
+        let wsl_backend = WslCommandBackend::discover(preferred_user);
+
+        if wsl_backend.sessions_root_available() {
+            return Box::new(wsl_backend);
+        }
+
+        local_backend = LocalFsBackend::new(primary.clone());
+        return Box::new(local_backend);
+    }
+
+    Box::new(local_backend)
+}
+
 pub(crate) fn format_session_transition_log(
     previous: Option<&std::path::Path>,
     current: Option<&std::path::Path>,
@@ -281,10 +371,27 @@ pub(crate) fn format_status_transition_log(
     ))
 }
 
-fn default_sessions_root() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+fn sessions_root_is_observable(root: &Path) -> bool {
+    root.is_dir() && std::fs::read_dir(root).is_ok()
+}
+
+fn default_sessions_root_from_env(
+    home: Option<&OsStr>,
+    userprofile: Option<&OsStr>,
+    current_dir: &Path,
+    prefer_userprofile: bool,
+) -> PathBuf {
+    let primary = if prefer_userprofile {
+        userprofile
+            .map(PathBuf::from)
+            .or_else(|| home.map(PathBuf::from))
+    } else {
+        home.map(PathBuf::from)
+            .or_else(|| userprofile.map(PathBuf::from))
+    };
+
+    primary
+        .unwrap_or_else(|| current_dir.to_path_buf())
         .join(".codex")
         .join("sessions")
 }
@@ -292,6 +399,7 @@ fn default_sessions_root() -> PathBuf {
 fn status_label(status: StatusKind) -> &'static str {
     match status {
         StatusKind::Idle => "idle",
+        StatusKind::CodexNotInstalled => "codex_not_installed",
         StatusKind::Thinking => "thinking",
         StatusKind::Writing => "writing",
         StatusKind::RunningTests => "running_tests",
@@ -346,6 +454,7 @@ mod monitor_tests {
             .snapshot
             .expect("bootstrap snapshot should be recorded");
         assert_eq!(bootstrap.status, StatusKind::Idle);
+        assert_eq!(bootstrap.sessions_root, root.display().to_string());
         assert_eq!(bootstrap.revision, 0);
 
         fs::remove_dir_all(root).expect("cleanup temp root");
@@ -405,6 +514,7 @@ mod monitor_tests {
             .expect("first tick succeeds");
         let first_snapshot = first.snapshot.expect("first snapshot should emit");
         assert_eq!(first_snapshot.status, StatusKind::Thinking);
+        assert_eq!(first_snapshot.sessions_root, root.display().to_string());
         assert_eq!(
             first_snapshot.session_id.as_deref(),
             Some(rollout_a.display().to_string().as_str())
@@ -422,6 +532,7 @@ mod monitor_tests {
             .snapshot
             .expect("snapshot should emit when session changes");
         assert_eq!(second_snapshot.status, StatusKind::Thinking);
+        assert_eq!(second_snapshot.sessions_root, root.display().to_string());
         assert_eq!(
             second_snapshot.session_id.as_deref(),
             Some(rollout_b.display().to_string().as_str())
@@ -432,6 +543,7 @@ mod monitor_tests {
             .snapshot
             .expect("bootstrap snapshot should exist");
         assert_eq!(bootstrap.status, StatusKind::Thinking);
+        assert_eq!(bootstrap.sessions_root, root.display().to_string());
         assert_eq!(
             bootstrap.session_id.as_deref(),
             Some(rollout_b.display().to_string().as_str())
@@ -515,6 +627,40 @@ mod monitor_tests {
         assert_eq!(payload.status, StatusKind::Thinking);
 
         fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn reports_codex_not_installed_when_sessions_root_is_missing() {
+        let root = missing_temp_root();
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+
+        let snapshot = supervisor
+            .tick(LivenessSnapshot::offline())
+            .expect("tick succeeds")
+            .snapshot
+            .expect("snapshot exists");
+
+        assert_eq!(snapshot.status, StatusKind::CodexNotInstalled);
+        assert_eq!(snapshot.session_id, None);
+        assert_eq!(snapshot.sessions_root, root.display().to_string());
+    }
+
+    #[test]
+    fn reports_codex_not_installed_when_sessions_root_is_not_a_directory() {
+        let root = file_temp_root();
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+
+        let snapshot = supervisor
+            .tick(LivenessSnapshot::offline())
+            .expect("tick succeeds")
+            .snapshot
+            .expect("snapshot exists");
+
+        assert_eq!(snapshot.status, StatusKind::CodexNotInstalled);
+        assert_eq!(snapshot.session_id, None);
+        assert_eq!(snapshot.sessions_root, root.display().to_string());
+
+        fs::remove_file(root).expect("cleanup temp file root");
     }
 
     #[test]
@@ -699,5 +845,23 @@ mod monitor_tests {
             .expect("open temp file for append");
         file.write_all(contents.as_bytes())
             .expect("append temp file");
+    }
+
+    fn missing_temp_root() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("waifudex-missing-monitor-{unique}"))
+    }
+
+    fn file_temp_root() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("waifudex-file-monitor-{unique}"));
+        fs::write(&root, "not a directory").expect("create temp file root");
+        root
     }
 }

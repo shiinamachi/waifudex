@@ -20,6 +20,7 @@ function createSnapshot(revision: number): RuntimeSnapshot {
     status: "thinking",
     summary: `summary-${revision}`,
     detail: `detail-${revision}`,
+    sessionsRoot: "/home/tester/.codex/sessions",
     source: "monitor",
     updatedAt: "2026-03-17T06:50:15.000Z",
     revision,

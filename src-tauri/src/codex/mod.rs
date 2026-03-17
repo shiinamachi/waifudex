@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod discovery;
 pub mod liveness;
 pub mod monitor;
@@ -16,6 +17,7 @@ pub fn snapshot_for_status(
     status: StatusKind,
     source: impl Into<String>,
     session_id: Option<String>,
+    sessions_root: impl Into<String>,
 ) -> RuntimeSnapshot {
     let (summary, detail) = describe_status(status);
     RuntimeSnapshot {
@@ -23,6 +25,7 @@ pub fn snapshot_for_status(
         status,
         summary: summary.to_string(),
         detail: detail.to_string(),
+        sessions_root: sessions_root.into(),
         updated_at: timestamp_now(),
         source: source.into(),
         revision: 0,
@@ -34,6 +37,10 @@ fn describe_status(status: StatusKind) -> (&'static str, &'static str) {
         StatusKind::Idle => (
             "Waiting for the next Codex task",
             "The backend is connected and the mascot remains in a calm default posture.",
+        ),
+        StatusKind::CodexNotInstalled => (
+            "Codex sessions root not found",
+            "Waifudex could not find the configured Codex sessions directory, so it cannot observe Codex runtime state.",
         ),
         StatusKind::Thinking => (
             "Thinking through the next change",
