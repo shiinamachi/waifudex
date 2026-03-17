@@ -8,3 +8,4 @@ src-tauri/gen
 AGENTS.md
 docs
 src-tauri/tests
+.worktress

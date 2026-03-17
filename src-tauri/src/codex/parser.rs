@@ -12,6 +12,25 @@ pub enum SessionEvent {
     Unknown,
 }
 
+impl SessionEvent {
+    pub fn parsed_type(&self) -> Option<&'static str> {
+        match self {
+            SessionEvent::TaskStarted => Some("task_started"),
+            SessionEvent::TaskCompleted => Some("task_completed"),
+            SessionEvent::ToolCallStarted { .. } => Some("tool_call_started"),
+            SessionEvent::ToolCallCompleted => Some("tool_call_completed"),
+            SessionEvent::MessageDelta => Some("message_delta"),
+            SessionEvent::Error { .. } => Some("error"),
+            SessionEvent::TokenCount => Some("token_count"),
+            SessionEvent::Unknown => None,
+        }
+    }
+
+    pub fn parse_ok(&self) -> bool {
+        self.parsed_type().is_some()
+    }
+}
+
 pub fn parse_session_line(line: &str) -> SessionEvent {
     let value = match serde_json::from_str::<Value>(line) {
         Ok(value) => value,
@@ -183,5 +202,23 @@ mod parser_tests {
         let event = parse_session_line(line);
 
         assert_eq!(event, SessionEvent::Unknown);
+    }
+
+    #[test]
+    fn known_event_exposes_parsed_type_and_parse_ok() {
+        let line = r#"{"type":"event_msg","payload":{"type":"task_started","turn_id":"abc"}}"#;
+        let event = parse_session_line(line);
+
+        assert_eq!(event.parsed_type(), Some("task_started"));
+        assert!(event.parse_ok());
+    }
+
+    #[test]
+    fn unknown_event_exposes_no_parsed_type_and_parse_not_ok() {
+        let line = r#"{"type":"response_item","payload":{"type":"something_weird"}}"#;
+        let event = parse_session_line(line);
+
+        assert_eq!(event.parsed_type(), None);
+        assert!(!event.parse_ok());
     }
 }

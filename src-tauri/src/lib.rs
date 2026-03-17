@@ -1,10 +1,16 @@
 pub mod codex;
+pub mod contracts;
+pub mod runtime_state;
 pub mod tray;
 pub mod window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(runtime_state::RuntimeState::new())
+        .invoke_handler(tauri::generate_handler![
+            runtime_state::get_runtime_bootstrap
+        ])
         .setup(|app| {
             let app_handle = app.handle().clone();
 

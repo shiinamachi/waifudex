@@ -1,4 +1,6 @@
-use super::{liveness::LivenessSnapshot, parser::SessionEvent, StatusKind, StatusPayload};
+use crate::contracts::runtime::RuntimeSnapshot;
+
+use super::{liveness::LivenessSnapshot, parser::SessionEvent, snapshot_for_status, StatusKind};
 
 #[derive(Debug, Clone)]
 pub struct StatusReducer {
@@ -19,8 +21,9 @@ impl StatusReducer {
     pub fn reduce(
         &mut self,
         event: Option<&SessionEvent>,
+        session_id: Option<String>,
         liveness: LivenessSnapshot,
-    ) -> StatusPayload {
+    ) -> RuntimeSnapshot {
         let status = match event {
             Some(SessionEvent::TaskStarted) => {
                 self.in_task = true;
@@ -59,7 +62,7 @@ impl StatusReducer {
             }
         };
 
-        StatusPayload::new(status, self.source.clone())
+        snapshot_for_status(status, self.source.clone(), session_id)
     }
 }
 
@@ -110,6 +113,7 @@ mod reducer_tests {
         let mut reducer = StatusReducer::new("monitor");
         let payload = reducer.reduce(
             Some(&SessionEvent::TaskStarted),
+            Some("session-a".to_string()),
             LivenessSnapshot::offline(),
         );
 
@@ -123,6 +127,7 @@ mod reducer_tests {
             Some(&SessionEvent::ToolCallStarted {
                 tool_name: "cargo test".to_string(),
             }),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
 
@@ -136,6 +141,7 @@ mod reducer_tests {
             Some(&SessionEvent::ToolCallStarted {
                 tool_name: "apply_patch".to_string(),
             }),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
 
@@ -149,6 +155,7 @@ mod reducer_tests {
             Some(&SessionEvent::Error {
                 message: "permission denied".to_string(),
             }),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
 
@@ -158,7 +165,7 @@ mod reducer_tests {
     #[test]
     fn no_recent_events_and_no_live_process_reduce_to_idle() {
         let mut reducer = StatusReducer::new("monitor");
-        let payload = reducer.reduce(None, LivenessSnapshot::offline());
+        let payload = reducer.reduce(None, None, LivenessSnapshot::offline());
 
         assert_eq!(payload.status, StatusKind::Idle);
     }
@@ -170,12 +177,17 @@ mod reducer_tests {
             Some(&SessionEvent::ToolCallStarted {
                 tool_name: "cargo test".to_string(),
             }),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
 
         assert_eq!(active.status, StatusKind::RunningTests);
 
-        let retained = reducer.reduce(None, LivenessSnapshot::online());
+        let retained = reducer.reduce(
+            None,
+            Some("session-a".to_string()),
+            LivenessSnapshot::online(),
+        );
         assert_eq!(retained.status, StatusKind::RunningTests);
     }
 
@@ -186,11 +198,13 @@ mod reducer_tests {
             Some(&SessionEvent::ToolCallStarted {
                 tool_name: "cargo test".to_string(),
             }),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
 
         let payload = reducer.reduce(
             Some(&SessionEvent::ToolCallCompleted),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
         assert_eq!(payload.status, StatusKind::Thinking);
@@ -199,23 +213,32 @@ mod reducer_tests {
     #[test]
     fn completed_task_falls_back_to_idle_while_process_remains_open() {
         let mut reducer = StatusReducer::new("monitor");
-        let _ = reducer.reduce(Some(&SessionEvent::TaskStarted), LivenessSnapshot::online());
+        let _ = reducer.reduce(
+            Some(&SessionEvent::TaskStarted),
+            Some("session-a".to_string()),
+            LivenessSnapshot::online(),
+        );
         let done = reducer.reduce(
             Some(&SessionEvent::TaskCompleted),
+            Some("session-a".to_string()),
             LivenessSnapshot::online(),
         );
         assert_eq!(done.status, StatusKind::Success);
 
-        let idle = reducer.reduce(None, LivenessSnapshot::online());
+        let idle = reducer.reduce(None, None, LivenessSnapshot::online());
         assert_eq!(idle.status, StatusKind::Idle);
     }
 
     #[test]
     fn active_task_falls_back_to_idle_when_process_goes_offline() {
         let mut reducer = StatusReducer::new("monitor");
-        let _ = reducer.reduce(Some(&SessionEvent::TaskStarted), LivenessSnapshot::online());
+        let _ = reducer.reduce(
+            Some(&SessionEvent::TaskStarted),
+            Some("session-a".to_string()),
+            LivenessSnapshot::online(),
+        );
 
-        let idle = reducer.reduce(None, LivenessSnapshot::offline());
+        let idle = reducer.reduce(None, None, LivenessSnapshot::offline());
         assert_eq!(idle.status, StatusKind::Idle);
     }
 }

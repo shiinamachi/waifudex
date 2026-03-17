@@ -2,59 +2,134 @@ use std::{io, path::PathBuf, time::Duration};
 
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::{
+    contracts::{
+        RuntimeEvent, RuntimeEventPayload, RuntimeSnapshot, RUNTIME_EVENT_STREAM,
+        RUNTIME_SNAPSHOT_EVENT,
+    },
+    runtime_state::RuntimeState,
+};
+
 use super::{
     discovery::SessionDiscovery,
     liveness::{LivenessProbe, LivenessSnapshot},
     parser::parse_session_line,
     reducer::StatusReducer,
     session_reader::SessionReader,
-    StatusKind, StatusPayload, CODEX_STATUS_EVENT,
+    StatusKind,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TimelineRecord {
+    session_id: Option<String>,
+    payload: RuntimeEventPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SnapshotMaterial {
+    status: StatusKind,
+    session_id: Option<String>,
+    summary: String,
+    detail: String,
+    source: String,
+}
+
+impl SnapshotMaterial {
+    fn from_snapshot(snapshot: &RuntimeSnapshot) -> Self {
+        Self {
+            status: snapshot.status,
+            session_id: snapshot.session_id.clone(),
+            summary: snapshot.summary.clone(),
+            detail: snapshot.detail.clone(),
+            source: snapshot.source.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TickOutput {
+    snapshot: Option<RuntimeSnapshot>,
+    timeline_records: Vec<TimelineRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TickEmissions {
+    pub snapshot: Option<RuntimeSnapshot>,
+    pub timeline: Vec<RuntimeEvent>,
+}
+
 pub struct MonitorSupervisor {
+    source: String,
     discovery: SessionDiscovery,
     reader: SessionReader,
     reducer: StatusReducer,
     last_status: Option<StatusKind>,
+    last_material: Option<SnapshotMaterial>,
     active_session_path: Option<PathBuf>,
 }
 
 impl MonitorSupervisor {
     pub fn new(sessions_root: PathBuf, source: impl Into<String>) -> Self {
+        let source = source.into();
         Self {
+            source: source.clone(),
             discovery: SessionDiscovery::new(sessions_root),
             reader: SessionReader::new(),
             reducer: StatusReducer::new(source),
             last_status: None,
+            last_material: None,
             active_session_path: None,
         }
     }
 
-    pub fn tick(&mut self, liveness: LivenessSnapshot) -> io::Result<Option<StatusPayload>> {
-        let payload = if let Some(candidate) = self.discovery.select_active_session()? {
+    pub(crate) fn tick(&mut self, liveness: LivenessSnapshot) -> io::Result<TickOutput> {
+        let mut timeline_records = Vec::new();
+
+        let snapshot_candidate = if let Some(candidate) = self.discovery.select_active_session()? {
             self.active_session_path = Some(candidate.path.clone());
+            let session_id = Some(candidate.path.display().to_string());
             let lines = self.reader.read_new_lines(&candidate.path)?;
+
             if lines.is_empty() {
-                self.reducer.reduce(None, liveness)
+                self.reducer.reduce(None, session_id, liveness)
             } else {
-                let mut latest_payload = None;
+                let mut latest_snapshot = None;
                 for line in lines {
                     let event = parse_session_line(&line);
-                    latest_payload = Some(self.reducer.reduce(Some(&event), liveness));
+                    timeline_records.push(TimelineRecord {
+                        session_id: session_id.clone(),
+                        payload: RuntimeEventPayload {
+                            raw_line: line,
+                            parsed_type: event.parsed_type().map(ToString::to_string),
+                            parse_ok: event.parse_ok(),
+                        },
+                    });
+                    latest_snapshot = Some(self.reducer.reduce(
+                        Some(&event),
+                        session_id.clone(),
+                        liveness,
+                    ));
                 }
-                latest_payload.expect("non-empty line batch produced a payload")
+                latest_snapshot.expect("non-empty line batch produced a snapshot")
             }
         } else {
             self.active_session_path = None;
-            self.reducer.reduce(None, liveness)
+            self.reducer.reduce(None, None, liveness)
         };
 
-        if self.last_status == Some(payload.status) {
-            return Ok(None);
-        }
+        let material = SnapshotMaterial::from_snapshot(&snapshot_candidate);
+        let snapshot = if self.last_material == Some(material.clone()) {
+            None
+        } else {
+            self.last_material = Some(material);
+            self.last_status = Some(snapshot_candidate.status);
+            Some(snapshot_candidate)
+        };
 
-        self.last_status = Some(payload.status);
-        Ok(Some(payload))
+        Ok(TickOutput {
+            snapshot,
+            timeline_records,
+        })
     }
 
     pub fn current_status(&self) -> Option<StatusKind> {
@@ -64,6 +139,35 @@ impl MonitorSupervisor {
     pub fn current_session_path(&self) -> Option<&std::path::Path> {
         self.active_session_path.as_deref()
     }
+}
+
+pub(crate) fn collect_tick_emissions(
+    supervisor: &mut MonitorSupervisor,
+    state: &RuntimeState,
+    liveness: LivenessSnapshot,
+) -> io::Result<TickEmissions> {
+    let output = supervisor.tick(liveness)?;
+    let snapshot = output
+        .snapshot
+        .map(|snapshot| state.record_snapshot(snapshot));
+    let timeline = output
+        .timeline_records
+        .into_iter()
+        .map(|record| {
+            let cursor = state.next_timeline_event(record.session_id.as_deref());
+            RuntimeEvent {
+                event_id: cursor.event_id,
+                session_id: record.session_id,
+                sequence: cursor.sequence,
+                received_at: super::timestamp_now(),
+                source: supervisor.source.clone(),
+                kind: "session_line".to_string(),
+                payload: record.payload,
+            }
+        })
+        .collect();
+
+    Ok(TickEmissions { snapshot, timeline })
 }
 
 pub fn start_monitor(app: AppHandle) {
@@ -78,19 +182,25 @@ pub fn start_monitor(app: AppHandle) {
         loop {
             ticker.tick().await;
 
-            match supervisor.tick(probe.snapshot()) {
-                Ok(Some(payload)) => {
-                    if let Some(message) = format_status_transition_log(
-                        last_logged_status,
-                        payload.status,
-                        supervisor.current_session_path(),
-                    ) {
-                        eprintln!("{message}");
+            let runtime_state = app.state::<RuntimeState>();
+            match collect_tick_emissions(&mut supervisor, &runtime_state, probe.snapshot()) {
+                Ok(emissions) => {
+                    for timeline_event in emissions.timeline {
+                        let _ = app.emit(RUNTIME_EVENT_STREAM, timeline_event);
                     }
-                    last_logged_status = Some(payload.status);
-                    let _ = app.emit(CODEX_STATUS_EVENT, payload);
+
+                    if let Some(snapshot) = emissions.snapshot {
+                        if let Some(message) = format_status_transition_log(
+                            last_logged_status,
+                            snapshot.status,
+                            supervisor.current_session_path(),
+                        ) {
+                            eprintln!("{message}");
+                        }
+                        last_logged_status = Some(snapshot.status);
+                        let _ = app.emit(RUNTIME_SNAPSHOT_EVENT, snapshot);
+                    }
                 }
-                Ok(None) => {}
                 Err(error) => {
                     eprintln!("waifudex monitor tick failed: {error}");
                 }
@@ -201,9 +311,183 @@ mod monitor_tests {
 
     use crate::codex::{
         liveness::LivenessSnapshot,
-        monitor::{format_session_transition_log, format_status_transition_log, MonitorSupervisor},
+        monitor::{
+            collect_tick_emissions, format_session_transition_log, format_status_transition_log,
+            MonitorSupervisor,
+        },
         StatusKind,
     };
+    use crate::runtime_state::RuntimeState;
+
+    #[test]
+    fn updates_bootstrap_state_when_first_snapshot_is_produced() {
+        let root = create_temp_root();
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+        let state = RuntimeState::new();
+
+        let emissions =
+            collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::offline())
+                .expect("tick collection succeeds");
+
+        assert_eq!(
+            emissions
+                .snapshot
+                .as_ref()
+                .expect("snapshot should exist")
+                .status,
+            StatusKind::Idle
+        );
+        assert!(
+            emissions.timeline.is_empty(),
+            "no timeline rows expected on empty startup"
+        );
+
+        let bootstrap = state
+            .bootstrap()
+            .snapshot
+            .expect("bootstrap snapshot should be recorded");
+        assert_eq!(bootstrap.status, StatusKind::Idle);
+        assert_eq!(bootstrap.revision, 0);
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn emits_snapshot_only_when_state_changes_materially() {
+        let root = create_temp_root();
+        let rollout = root.join("2026/03/17/rollout-material.jsonl");
+        write_file(&rollout, "");
+
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+        let state = RuntimeState::new();
+
+        let first = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::offline())
+            .expect("first tick succeeds");
+        assert!(first.snapshot.is_some(), "first idle snapshot should emit");
+
+        append_file(
+            &rollout,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"abc\"}}\n",
+        );
+        let second = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::online())
+            .expect("second tick succeeds");
+        assert_eq!(
+            second
+                .snapshot
+                .as_ref()
+                .expect("thinking snapshot should emit")
+                .status,
+            StatusKind::Thinking
+        );
+
+        let third = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::online())
+            .expect("third tick succeeds");
+        assert!(
+            third.snapshot.is_none(),
+            "snapshot should not emit while status is unchanged"
+        );
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn emits_snapshot_and_updates_bootstrap_when_session_changes_with_same_status() {
+        let root = create_temp_root();
+        let rollout_a = root.join("2026/03/17/rollout-session-a.jsonl");
+        write_file(
+            &rollout_a,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"a\"}}\n",
+        );
+
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+        let state = RuntimeState::new();
+
+        let first = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::online())
+            .expect("first tick succeeds");
+        let first_snapshot = first.snapshot.expect("first snapshot should emit");
+        assert_eq!(first_snapshot.status, StatusKind::Thinking);
+        assert_eq!(
+            first_snapshot.session_id.as_deref(),
+            Some(rollout_a.display().to_string().as_str())
+        );
+
+        let rollout_b = root.join("2026/03/17/rollout-session-b.jsonl");
+        write_file(
+            &rollout_b,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"b\"}}\n",
+        );
+
+        let second = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::online())
+            .expect("second tick succeeds");
+        let second_snapshot = second
+            .snapshot
+            .expect("snapshot should emit when session changes");
+        assert_eq!(second_snapshot.status, StatusKind::Thinking);
+        assert_eq!(
+            second_snapshot.session_id.as_deref(),
+            Some(rollout_b.display().to_string().as_str())
+        );
+
+        let bootstrap = state
+            .bootstrap()
+            .snapshot
+            .expect("bootstrap snapshot should exist");
+        assert_eq!(bootstrap.status, StatusKind::Thinking);
+        assert_eq!(
+            bootstrap.session_id.as_deref(),
+            Some(rollout_b.display().to_string().as_str())
+        );
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn emits_timeline_events_for_each_new_line_with_increasing_sequence() {
+        let root = create_temp_root();
+        let rollout = root.join("2026/03/17/rollout-timeline.jsonl");
+        write_file(&rollout, "");
+
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+        let state = RuntimeState::new();
+        let _ = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::offline())
+            .expect("prime tick succeeds");
+
+        append_file(
+            &rollout,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"abc\"}}\n",
+        );
+        append_file(
+            &rollout,
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"cargo test\",\"arguments\":\"{}\",\"call_id\":\"call_123\"}}\n",
+        );
+
+        let batch = collect_tick_emissions(&mut supervisor, &state, LivenessSnapshot::online())
+            .expect("timeline tick succeeds");
+
+        assert_eq!(batch.timeline.len(), 2);
+        assert_eq!(batch.timeline[0].sequence, 0);
+        assert_eq!(batch.timeline[1].sequence, 1);
+        assert_eq!(
+            batch.timeline[0].payload.raw_line,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"abc\"}}"
+        );
+        assert_eq!(
+            batch.timeline[1].payload.raw_line,
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"cargo test\",\"arguments\":\"{}\",\"call_id\":\"call_123\"}}"
+        );
+        assert_eq!(
+            batch.timeline[0].payload.parsed_type.as_deref(),
+            Some("task_started")
+        );
+        assert_eq!(
+            batch.timeline[1].payload.parsed_type.as_deref(),
+            Some("tool_call_started")
+        );
+        assert!(batch.timeline[0].payload.parse_ok);
+        assert!(batch.timeline[1].payload.parse_ok);
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
 
     #[test]
     fn detects_a_new_rollout_file_after_startup() {
@@ -213,7 +497,8 @@ mod monitor_tests {
         let initial = supervisor
             .tick(LivenessSnapshot::offline())
             .expect("initial tick succeeds")
-            .expect("initial payload exists");
+            .snapshot
+            .expect("initial snapshot exists");
         assert_eq!(initial.status, StatusKind::Idle);
 
         let rollout = root.join("2026/03/17/rollout-late.jsonl");
@@ -225,7 +510,8 @@ mod monitor_tests {
         let payload = supervisor
             .tick(LivenessSnapshot::offline())
             .expect("follow-up tick succeeds")
-            .expect("new rollout payload exists");
+            .snapshot
+            .expect("new rollout snapshot exists");
 
         assert_eq!(payload.status, StatusKind::Thinking);
 
@@ -242,7 +528,8 @@ mod monitor_tests {
         let initial = supervisor
             .tick(LivenessSnapshot::offline())
             .expect("initial tick succeeds")
-            .expect("initial payload exists");
+            .snapshot
+            .expect("initial snapshot exists");
         assert_eq!(initial.status, StatusKind::Idle);
 
         append_file(
@@ -257,7 +544,8 @@ mod monitor_tests {
         let payload = supervisor
             .tick(LivenessSnapshot::online())
             .expect("append tick succeeds")
-            .expect("active payload exists");
+            .snapshot
+            .expect("active snapshot exists");
 
         assert_eq!(payload.status, StatusKind::RunningTests);
 
@@ -277,13 +565,15 @@ mod monitor_tests {
         let active = supervisor
             .tick(LivenessSnapshot::online())
             .expect("active tick succeeds")
-            .expect("active payload exists");
+            .snapshot
+            .expect("active snapshot exists");
         assert_eq!(active.status, StatusKind::Thinking);
 
         let idle = supervisor
             .tick(LivenessSnapshot::offline())
             .expect("idle tick succeeds")
-            .expect("idle payload exists");
+            .snapshot
+            .expect("idle snapshot exists");
 
         assert_eq!(idle.status, StatusKind::Idle);
         assert!(supervisor.current_session_path().is_some());
@@ -308,7 +598,8 @@ mod monitor_tests {
         let payload = supervisor
             .tick(LivenessSnapshot::online())
             .expect("batch tick succeeds")
-            .expect("batch payload exists");
+            .snapshot
+            .expect("batch snapshot exists");
 
         assert_eq!(payload.status, StatusKind::RunningTests);
 

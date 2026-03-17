@@ -5,46 +5,27 @@ pub mod parser;
 pub mod reducer;
 pub mod session_reader;
 
-use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
+use crate::contracts::runtime::RuntimeSnapshot;
+pub use crate::contracts::runtime::RuntimeStatus as StatusKind;
 pub use monitor::start_monitor;
 pub use parser::SessionEvent;
 
-pub const CODEX_STATUS_EVENT: &str = "waifudex://codex-status";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StatusKind {
-    Idle,
-    Thinking,
-    Writing,
-    RunningTests,
-    Success,
-    Error,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StatusPayload {
-    pub status: StatusKind,
-    pub summary: String,
-    pub detail: String,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: String,
-    pub source: String,
-}
-
-impl StatusPayload {
-    pub fn new(status: StatusKind, source: impl Into<String>) -> Self {
-        let (summary, detail) = describe_status(status);
-
-        Self {
-            status,
-            summary: summary.to_string(),
-            detail: detail.to_string(),
-            updated_at: timestamp_for(status),
-            source: source.into(),
-        }
+pub fn snapshot_for_status(
+    status: StatusKind,
+    source: impl Into<String>,
+    session_id: Option<String>,
+) -> RuntimeSnapshot {
+    let (summary, detail) = describe_status(status);
+    RuntimeSnapshot {
+        session_id,
+        status,
+        summary: summary.to_string(),
+        detail: detail.to_string(),
+        updated_at: timestamp_now(),
+        source: source.into(),
+        revision: 0,
     }
 }
 
@@ -77,8 +58,7 @@ fn describe_status(status: StatusKind) -> (&'static str, &'static str) {
     }
 }
 
-fn timestamp_for(status: StatusKind) -> String {
-    let _ = status;
+pub fn timestamp_now() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
