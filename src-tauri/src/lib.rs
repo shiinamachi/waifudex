@@ -8,6 +8,7 @@ pub mod window;
 pub fn run() {
     tauri::Builder::default()
         .manage(runtime_state::RuntimeState::new())
+        .manage(window::WindowVisibilityState::new(2))
         .invoke_handler(tauri::generate_handler![
             runtime_state::get_runtime_bootstrap
         ])

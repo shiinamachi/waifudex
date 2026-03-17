@@ -174,7 +174,6 @@ pub fn start_monitor(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut supervisor = MonitorSupervisor::new(default_sessions_root(), "monitor");
         let probe = LivenessProbe::new("codex");
-        let mut window_policy = crate::window::WindowVisibilityPolicy::new(2);
         let mut ticker = tokio::time::interval(Duration::from_secs(1));
         let mut last_logged_session: Option<PathBuf> = None;
         let mut last_logged_status: Option<StatusKind> = None;
@@ -217,13 +216,13 @@ pub fn start_monitor(app: AppHandle) {
             last_logged_session = current_session;
 
             if let Some(status) = supervisor.current_status() {
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Ok(visible) = window.is_visible() {
-                        window_policy.sync_visible(visible);
-                    }
+                let window_state = app.state::<crate::window::WindowVisibilityState>();
+
+                if let Ok(visible) = crate::window::is_main_window_visible(&app) {
+                    window_state.sync_visible(visible);
                 }
 
-                match window_policy.on_status(status) {
+                match window_state.on_status(status) {
                     crate::window::WindowCommand::Show => {
                         let _ = crate::window::show_main_window(&app);
                     }
