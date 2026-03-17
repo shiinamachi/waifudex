@@ -1,0 +1,97 @@
+:root {
+  color: #f5f3ef;
+  background:
+    radial-gradient(circle at top, rgba(243, 166, 131, 0.35), transparent 45%),
+    linear-gradient(180deg, rgba(40, 55, 81, 0.92), rgba(10, 16, 28, 0.96));
+  font-family: "Iosevka Aile", "IBM Plex Sans KR", sans-serif;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent 90%);
+  pointer-events: none;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 24px;
+  align-items: center;
+  min-height: 100vh;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
+.app-shell__copy {
+  display: grid;
+  gap: 18px;
+}
+
+.app-shell__header {
+  display: grid;
+  gap: 10px;
+}
+
+.app-shell__eyebrow {
+  margin: 0 0 8px;
+  color: #ffb38b;
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 8vw, 3.8rem);
+  line-height: 0.92;
+}
+
+p {
+  margin: 0;
+  color: rgba(245, 243, 239, 0.82);
+  line-height: 1.5;
+}
+
+.app-shell__toggle {
+  width: fit-content;
+  border: 0;
+  border-radius: 999px;
+  background: #ffb38b;
+  color: #15202d;
+  cursor: pointer;
+  padding: 12px 18px;
+  font-weight: 700;
+}
+
+.app-shell__figure {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding: 20px;
+  }
+}
