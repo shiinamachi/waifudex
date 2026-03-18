@@ -28,6 +28,11 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if tray::should_cleanup_on_run_event(&event) {
+                tray::remove_tray_icon(app_handle);
+            }
+        });
 }

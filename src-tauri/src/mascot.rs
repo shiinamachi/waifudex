@@ -65,7 +65,16 @@ impl MascotManager {
 
         let thread = thread::Builder::new()
             .name("waifudex-mascot".to_string())
-            .spawn(move || render_loop(app_handle, resolved_model_path, width, height, receiver, init_sender))
+            .spawn(move || {
+                render_loop(
+                    app_handle,
+                    resolved_model_path,
+                    width,
+                    height,
+                    receiver,
+                    init_sender,
+                )
+            })
             .map_err(|error| format!("failed to spawn mascot render loop: {error}"))?;
 
         let available_params = init_receiver

@@ -31,3 +31,6 @@ waifudex-mascot = { path = "../crates/waifudex-mascot", features = ["native-inoc
 
 [target.'cfg(not(any(target_os = "linux", target_os = "windows")))'.dependencies]
 waifudex-mascot = { path = "../crates/waifudex-mascot" }
+
+[dev-dependencies]
+tauri = { version = "=2.10.3", features = ["test", "tray-icon"] }

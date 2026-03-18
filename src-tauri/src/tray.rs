@@ -1,7 +1,7 @@
 use tauri::{
     menu::{MenuBuilder, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Wry,
+    AppHandle, Manager, Runtime,
 };
 
 const TRAY_ID: &str = "waifudex-tray";
@@ -9,12 +9,12 @@ const WINDOW_TOGGLE_ID: &str = "toggle-window";
 const WINDOW_OPEN_LABEL: &str = "Open";
 const WINDOW_CLOSE_LABEL: &str = "Close";
 
-pub struct TrayWindowActionState {
-    window_toggle_item: MenuItem<Wry>,
+pub struct TrayWindowActionState<R: Runtime> {
+    window_toggle_item: MenuItem<R>,
 }
 
-impl TrayWindowActionState {
-    fn new(window_toggle_item: MenuItem<Wry>) -> Self {
+impl<R: Runtime> TrayWindowActionState<R> {
+    fn new(window_toggle_item: MenuItem<R>) -> Self {
         Self { window_toggle_item }
     }
 
@@ -24,7 +24,7 @@ impl TrayWindowActionState {
     }
 }
 
-pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window_toggle_item = MenuItem::with_id(
         app,
         WINDOW_TOGGLE_ID,
@@ -52,7 +52,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             WINDOW_TOGGLE_ID => {
                 let _ = crate::window::toggle_main_window(app);
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                remove_tray_icon(app);
+                app.exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -70,14 +73,25 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn sync_window_action_label(app: &AppHandle) -> tauri::Result<()> {
+pub fn sync_window_action_label<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let visible = crate::window::is_main_window_visible(app)?;
 
-    if let Some(state) = app.try_state::<TrayWindowActionState>() {
+    if let Some(state) = app.try_state::<TrayWindowActionState<R>>() {
         state.sync_label(visible)?;
     }
 
     Ok(())
+}
+
+pub fn remove_tray_icon<R: Runtime>(app: &AppHandle<R>) {
+    let _ = app.remove_tray_by_id(TRAY_ID);
+}
+
+pub fn should_cleanup_on_run_event(event: &tauri::RunEvent) -> bool {
+    matches!(
+        event,
+        tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+    )
 }
 
 fn window_action_label(visible: bool) -> &'static str {
@@ -85,5 +99,36 @@ fn window_action_label(visible: bool) -> &'static str {
         WINDOW_CLOSE_LABEL
     } else {
         WINDOW_OPEN_LABEL
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{remove_tray_icon, should_cleanup_on_run_event, TRAY_ID};
+
+    fn create_app() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app should build")
+    }
+
+    #[test]
+    fn cleanup_runs_for_exit_event() {
+        assert!(should_cleanup_on_run_event(&tauri::RunEvent::Exit));
+    }
+
+    #[test]
+    fn cleanup_does_not_run_for_ready_event() {
+        assert!(!should_cleanup_on_run_event(&tauri::RunEvent::Ready));
+    }
+
+    #[test]
+    fn remove_tray_icon_is_safe_when_the_tray_was_never_created() {
+        let app = create_app();
+        let app_handle = app.handle().clone();
+
+        remove_tray_icon(&app_handle);
+
+        assert!(app_handle.tray_by_id(TRAY_ID).is_none());
     }
 }

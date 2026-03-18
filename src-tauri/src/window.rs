@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use crate::codex::StatusKind;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowCommand {
@@ -137,12 +137,12 @@ impl WindowVisibilityState {
     }
 }
 
-pub fn configure_main_window(app: &AppHandle) -> tauri::Result<()> {
+pub fn configure_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let _ = app;
     Ok(())
 }
 
-pub fn is_main_window_visible(app: &AppHandle) -> tauri::Result<bool> {
+pub fn is_main_window_visible<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<bool> {
     if let Some(window) = app.get_webview_window("main") {
         return window.is_visible();
     }
@@ -150,7 +150,7 @@ pub fn is_main_window_visible(app: &AppHandle) -> tauri::Result<bool> {
     Ok(false)
 }
 
-pub fn show_main_window(app: &AppHandle) -> tauri::Result<()> {
+pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.show()?;
         let _ = window.set_focus();
@@ -161,7 +161,7 @@ pub fn show_main_window(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn hide_main_window(app: &AppHandle) -> tauri::Result<()> {
+pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.hide()?;
     }
@@ -171,7 +171,7 @@ pub fn hide_main_window(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn toggle_main_window(app: &AppHandle) -> tauri::Result<()> {
+pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let visible = is_main_window_visible(app)?;
 
     if let Some(window_state) = app.try_state::<WindowVisibilityState>() {
