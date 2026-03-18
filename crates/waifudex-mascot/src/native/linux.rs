@@ -1,32 +1,19 @@
 use std::{
-    ffi::{CStr, CString},
     os::raw::c_void,
     path::Path,
     ptr::{self, NonNull},
 };
 
 use inochi2d_sys::{
-    inCameraGetCurrent, inCameraSetPosition, inCameraSetZoom, inCleanup, inErrorGet, inInit,
-    inParameterGetMax, inParameterGetMin, inParameterGetName, inParameterGetValue,
-    inParameterIsVec2, inParameterSetValue, inPuppetDestroy, inPuppetDraw, inPuppetGetParameters,
-    inPuppetLoad, inPuppetUpdate, inSceneBegin, inSceneDraw, inSceneEnd, inUpdate, inViewportSet,
-    InError, InParameter, InPuppet,
+    inCleanup, inParameterSetValue, inPuppetDestroy, inPuppetDraw, inPuppetUpdate, inSceneBegin,
+    inSceneDraw, inSceneEnd, inUpdate, inViewportSet, InPuppet,
 };
 use khronos_egl as egl;
 
+use super::{flip_rows, initialize_inochi2d, load_params, load_puppet, trace_stage, NativeParam};
 use crate::{MascotError, MascotParamValue, ParamInfo, Result};
 
 const EGL_PLATFORM_SURFACELESS_MESA: egl::Enum = 0x31DD;
-const CAMERA_ZOOM: f32 = 0.24;
-const CAMERA_POS_X: f32 = 0.0;
-const CAMERA_POS_Y: f32 = 850.0;
-
-#[derive(Clone, Debug)]
-struct NativeParam {
-    ptr: NonNull<InParameter>,
-    info: ParamInfo,
-    current: (f32, f32),
-}
 
 pub struct NativeMascotRenderer {
     egl: egl::DynamicInstance,
@@ -54,14 +41,14 @@ impl NativeMascotRenderer {
 
         trace_stage("load egl");
         let egl = unsafe { egl::DynamicInstance::<egl::Latest>::load_required() }
-            .map_err(map_egl_error)?;
+            .map_err(map_context_error)?;
         trace_stage("bind api");
-        egl.bind_api(egl::OPENGL_API).map_err(map_egl_error)?;
+        egl.bind_api(egl::OPENGL_API).map_err(map_context_error)?;
 
         trace_stage("acquire display");
         let display = acquire_display(&egl)?;
         trace_stage("initialize display");
-        egl.initialize(display).map_err(map_egl_error)?;
+        egl.initialize(display).map_err(map_context_error)?;
 
         trace_stage("choose config");
         let config = choose_config(&egl, display)?;
@@ -72,7 +59,7 @@ impl NativeMascotRenderer {
 
         trace_stage("make current");
         egl.make_current(display, Some(surface), Some(surface), Some(context))
-            .map_err(map_egl_error)?;
+            .map_err(map_context_error)?;
 
         trace_stage("load gl");
         gl::load_with(|name| {
@@ -88,27 +75,12 @@ impl NativeMascotRenderer {
         }
 
         trace_stage("init inochi2d");
-        unsafe {
-            inInit(None);
-            inViewportSet(width.max(1), height.max(1));
-        }
-
-        trace_stage("camera");
-        let camera = unsafe { inCameraGetCurrent() };
-        if !camera.is_null() {
-            unsafe {
-                inCameraSetZoom(camera, CAMERA_ZOOM);
-                inCameraSetPosition(camera, CAMERA_POS_X, CAMERA_POS_Y);
-            }
-        }
+        initialize_inochi2d(width, height);
 
         trace_stage("load puppet");
-        let model_path_cstr = CString::new(model_path.to_string_lossy().as_bytes())
-            .map_err(|error| MascotError::NativeFfi(error.to_string()))?;
-        let puppet = NonNull::new(unsafe { inPuppetLoad(model_path_cstr.as_ptr()) })
-            .ok_or_else(last_ffi_error)?;
+        let puppet = load_puppet(model_path)?;
         trace_stage("load params");
-        let params = load_params(puppet)?;
+        let params = load_params(puppet);
         let param_infos = params.iter().map(|param| param.info.clone()).collect();
         let frame = vec![0; (width.max(1) * height.max(1) * 4) as usize];
 
@@ -162,7 +134,7 @@ impl NativeMascotRenderer {
                 Some(self.surface),
                 Some(self.context),
             )
-            .map_err(map_egl_error)?;
+            .map_err(map_context_error)?;
 
         unsafe {
             gl::Viewport(0, 0, self.width as i32, self.height as i32);
@@ -201,10 +173,10 @@ impl NativeMascotRenderer {
 
         self.egl
             .make_current(self.display, None, None, None)
-            .map_err(map_egl_error)?;
+            .map_err(map_context_error)?;
         self.egl
             .destroy_surface(self.display, self.surface)
-            .map_err(map_egl_error)?;
+            .map_err(map_context_error)?;
 
         self.surface = create_surface(&self.egl, self.display, self.config, width, height)?;
         self.egl
@@ -214,7 +186,7 @@ impl NativeMascotRenderer {
                 Some(self.surface),
                 Some(self.context),
             )
-            .map_err(map_egl_error)?;
+            .map_err(map_context_error)?;
 
         self.width = width;
         self.height = height;
@@ -275,8 +247,8 @@ fn choose_config(egl: &egl::DynamicInstance, display: egl::Display) -> Result<eg
     ];
 
     egl.choose_first_config(display, &attributes)
-        .map_err(map_egl_error)?
-        .ok_or_else(|| MascotError::NativeEgl("no compatible egl config".to_string()))
+        .map_err(map_context_error)?
+        .ok_or_else(|| MascotError::NativeContext("no compatible egl config".to_string()))
 }
 
 fn acquire_display(egl: &egl::DynamicInstance) -> Result<egl::Display> {
@@ -293,7 +265,7 @@ fn acquire_display(egl: &egl::DynamicInstance) -> Result<egl::Display> {
     }
 
     unsafe { egl.get_display(egl::DEFAULT_DISPLAY) }
-        .ok_or_else(|| MascotError::NativeEgl("eglGetDisplay returned null".to_string()))
+        .ok_or_else(|| MascotError::NativeContext("eglGetDisplay returned null".to_string()))
 }
 
 fn create_context(
@@ -310,7 +282,7 @@ fn create_context(
     ];
 
     egl.create_context(display, config, None, &attributes)
-        .map_err(map_egl_error)
+        .map_err(map_context_error)
 }
 
 fn create_surface(
@@ -329,97 +301,9 @@ fn create_surface(
     ];
 
     egl.create_pbuffer_surface(display, config, &attributes)
-        .map_err(map_egl_error)
+        .map_err(map_context_error)
 }
 
-fn load_params(puppet: NonNull<InPuppet>) -> Result<Vec<NativeParam>> {
-    let mut length = 0_usize;
-    unsafe {
-        inPuppetGetParameters(puppet.as_ptr(), ptr::null_mut(), &mut length);
-    }
-
-    let mut raw_params = vec![ptr::null_mut::<InParameter>(); length];
-    let mut raw_params_ptr = raw_params.as_mut_ptr();
-    unsafe {
-        inPuppetGetParameters(puppet.as_ptr(), &mut raw_params_ptr, &mut length);
-    }
-    raw_params.truncate(length);
-
-    let mut params = Vec::with_capacity(raw_params.len());
-    for raw in raw_params {
-        let Some(ptr) = NonNull::new(raw) else {
-            continue;
-        };
-
-        let name_ptr = unsafe { inParameterGetName(ptr.as_ptr()) };
-        let name = if name_ptr.is_null() {
-            String::new()
-        } else {
-            unsafe { CStr::from_ptr(name_ptr) }
-                .to_string_lossy()
-                .into_owned()
-        };
-
-        let mut current_x = 0.0_f32;
-        let mut current_y = 0.0_f32;
-        let mut min_x = 0.0_f32;
-        let mut min_y = 0.0_f32;
-        let mut max_x = 0.0_f32;
-        let mut max_y = 0.0_f32;
-        unsafe {
-            inParameterGetValue(ptr.as_ptr(), &mut current_x, &mut current_y);
-            inParameterGetMin(ptr.as_ptr(), &mut min_x, &mut min_y);
-            inParameterGetMax(ptr.as_ptr(), &mut max_x, &mut max_y);
-        }
-
-        params.push(NativeParam {
-            ptr,
-            info: ParamInfo {
-                name,
-                is_vec2: unsafe { inParameterIsVec2(ptr.as_ptr()) },
-                min: [min_x, min_y],
-                max: [max_x, max_y],
-                defaults: [current_x, current_y],
-            },
-            current: (current_x, current_y),
-        });
-    }
-
-    Ok(params)
-}
-
-fn last_ffi_error() -> MascotError {
-    let error = unsafe { inErrorGet() };
-    if error.is_null() {
-        return MascotError::NativeFfi("inochi2d returned a null pointer".to_string());
-    }
-
-    let error = unsafe { &*error.cast::<InError>() };
-    if error.msg.is_null() || error.len == 0 {
-        return MascotError::NativeFfi("inochi2d call failed".to_string());
-    }
-
-    let message = unsafe { std::slice::from_raw_parts(error.msg.cast::<u8>(), error.len) };
-    MascotError::NativeFfi(String::from_utf8_lossy(message).into_owned())
-}
-
-fn map_egl_error(error: impl ToString) -> MascotError {
-    MascotError::NativeEgl(error.to_string())
-}
-
-fn trace_stage(_stage: &str) {
-    #[cfg(test)]
-    eprintln!("[waifudex-mascot] {_stage}");
-}
-
-fn flip_rows(rgba: &mut [u8], width: usize, height: usize) {
-    let stride = width * 4;
-    let mut row = vec![0_u8; stride];
-    for y in 0..(height / 2) {
-        let top = y * stride;
-        let bottom = (height - y - 1) * stride;
-        row.copy_from_slice(&rgba[top..top + stride]);
-        rgba.copy_within(bottom..bottom + stride, top);
-        rgba[bottom..bottom + stride].copy_from_slice(&row);
-    }
+fn map_context_error(error: impl ToString) -> MascotError {
+    MascotError::NativeContext(error.to_string())
 }

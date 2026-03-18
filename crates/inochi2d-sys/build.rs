@@ -1,6 +1,7 @@
 use std::{env, path::PathBuf};
 
 fn main() {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").expect("target os");
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let project_root = crate_dir
         .parent()
@@ -16,18 +17,23 @@ fn main() {
 
     if out_dir.exists() {
         println!("cargo:rustc-link-search=native={}", out_dir.display());
-        #[cfg(target_os = "linux")]
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", out_dir.display());
+        if target_os == "linux" {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", out_dir.display());
+        }
     } else {
         println!(
             "cargo:warning=inochi2d-c build output not found at {}; run scripts/build-inochi2d.sh before enabling native integration",
             out_dir.display()
         );
     }
-    println!("cargo:rustc-link-lib=dylib=inochi2d-c");
-    println!("cargo:rustc-link-lib=dylib=z");
-    println!("cargo:rustc-link-lib=dylib=EGL");
-    println!("cargo:rustc-link-lib=dylib=GL");
+    if target_os == "linux" {
+        println!("cargo:rustc-link-lib=dylib=inochi2d-c");
+        println!("cargo:rustc-link-lib=dylib=z");
+        println!("cargo:rustc-link-lib=dylib=EGL");
+        println!("cargo:rustc-link-lib=dylib=GL");
+    } else if target_os == "windows" {
+        println!("cargo:rustc-link-lib=dylib=inochi2d-c");
+    }
 
     let bindings = bindgen::Builder::default()
         .header(wrapper_path.display().to_string())

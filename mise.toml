@@ -29,3 +29,14 @@ sudo apt update
 sudo apt install -y llvm clang lld
 cargo install --locked cargo-xwin
 '''
+
+[tasks."verify:inochi2d-windows-artifacts"]
+description = "Verify copied Windows inochi2d-c artifacts exist in third_party/inochi2d-c/out"
+run = '''
+test -f third_party/inochi2d-c/out/inochi2d-c.dll
+test -f third_party/inochi2d-c/out/inochi2d-c.lib
+'''
+
+[tasks."build:inochi2d-windows"]
+description = "Build Windows inochi2d-c artifacts from WSL"
+run = "./scripts/build-inochi2d-windows.sh"

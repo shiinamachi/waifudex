@@ -41,6 +41,7 @@ case "$(uname -s)" in
     ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
     test -f "${OUT_DIR}/inochi2d-c.dll"
+    test -f "${OUT_DIR}/inochi2d-c.lib"
     ;;
   *)
     echo "unsupported platform for validation: $(uname -s)" >&2

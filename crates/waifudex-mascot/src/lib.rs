@@ -25,8 +25,8 @@ pub type Result<T> = StdResult<T, MascotError>;
 pub enum MascotError {
     #[error("mascot model was not found: {0}")]
     ModelNotFound(PathBuf),
-    #[error("failed to initialize native egl backend: {0}")]
-    NativeEgl(String),
+    #[error("failed to initialize native OpenGL backend: {0}")]
+    NativeContext(String),
     #[error("inochi2d native call failed: {0}")]
     NativeFfi(String),
     #[error("native inochi2d backend is not available in this build")]
@@ -112,8 +112,12 @@ pub use native::NativeMascotRenderer as MascotRenderer;
 
 #[cfg(test)]
 mod tests {
-    use super::{MascotParamValue, MascotRenderer};
-    use std::{fs, path::PathBuf};
+    use super::MascotRenderer;
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::{Mutex, OnceLock},
+    };
 
     fn fixture_model_path() -> PathBuf {
         let path = std::env::temp_dir().join("waifudex-mascot-test.inx");
@@ -129,6 +133,15 @@ mod tests {
             .join("../../public/models/Aka.inx")
             .canonicalize()
             .expect("real model path")
+    }
+
+    #[cfg(feature = "native-inochi2d")]
+    fn native_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static NATIVE_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        NATIVE_TEST_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("native test mutex")
     }
 
     #[cfg(not(feature = "native-inochi2d"))]
@@ -149,6 +162,8 @@ mod tests {
     #[cfg(not(feature = "native-inochi2d"))]
     #[test]
     fn renderer_marks_changes_when_params_update() {
+        use super::MascotParamValue;
+
         let mut renderer = MascotRenderer::new(&fixture_model_path(), 24, 24).expect("renderer");
         let _ = renderer.render_frame(1.0 / 60.0).expect("initial render");
 
@@ -165,21 +180,16 @@ mod tests {
 
     #[cfg(feature = "native-inochi2d")]
     #[test]
-    fn native_renderer_loads_real_model_and_discovers_params() {
-        let renderer = MascotRenderer::new(&real_model_path(), 64, 64).expect("native renderer");
+    fn native_renderer_loads_real_model_discovers_params_and_emits_a_frame() {
+        let _guard = native_test_guard();
+        let mut renderer =
+            MascotRenderer::new(&real_model_path(), 128, 128).expect("native renderer");
 
         assert!(!renderer.available_params().is_empty());
         assert!(renderer
             .available_params()
             .iter()
             .all(|param| !param.name.is_empty()));
-    }
-
-    #[cfg(feature = "native-inochi2d")]
-    #[test]
-    fn native_renderer_emits_a_non_empty_frame_for_the_real_model() {
-        let mut renderer =
-            MascotRenderer::new(&real_model_path(), 128, 128).expect("native renderer");
 
         let frame = renderer
             .render_frame(1.0 / 60.0)
