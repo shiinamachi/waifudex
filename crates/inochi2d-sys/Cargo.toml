@@ -1,0 +1,8 @@
+[package]
+name = "inochi2d-sys"
+version = "0.1.0"
+edition = "2021"
+links = "inochi2d-c"
+
+[build-dependencies]
+bindgen = "=0.72.1"
