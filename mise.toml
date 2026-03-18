@@ -1,7 +1,18 @@
 [tools]
 node = "24.14.0"
 pnpm = "10.32.1"
-rust = { version = "1.94.0", profile = "minimal", components = "rustfmt", targets = "x86_64-pc-windows-msvc" }
+rust = { version = "1.94.0", profile = "minimal", components = "rustfmt", targets = ["x86_64-pc-windows-msvc"] }
+
+[tasks."setup:inochi2d-linux"]
+description = "Install Linux build prerequisites for inochi2d-c on Ubuntu/WSL"
+run = '''
+if ! grep -q '^ID=ubuntu$' /etc/os-release; then
+  echo "This task supports Ubuntu only." >&2
+  exit 1
+fi
+sudo apt update
+sudo apt install -y ldc dub libegl1-mesa-dev libclang-dev
+'''
 
 [tasks."setup:windows-build"]
 description = "Prepare Ubuntu WSL for Windows x64 cross-builds"
