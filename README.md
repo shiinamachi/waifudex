@@ -2,7 +2,7 @@
 
 My codex is waifu!
 
-Codex status monitoring tool with kawaii live2d character.
+Codex status monitoring tool with kawaii character.
 
 ## Why do I have to use this?
 
