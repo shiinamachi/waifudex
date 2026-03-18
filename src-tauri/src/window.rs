@@ -137,10 +137,14 @@ impl WindowVisibilityState {
     }
 }
 
-pub fn configure_main_window<R: Runtime>(_app: &AppHandle<R>) -> tauri::Result<()> {
-    #[cfg(windows)]
-    if let Some(window) = _app.get_webview_window("main") {
-        window.hide()?;
+pub fn configure_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    // On Windows the native mascot window is used instead of the Tauri webview,
+    // so the main window stays hidden. On other platforms, show it now that
+    // setup is complete (the window starts with visible:false in tauri.conf.json
+    // to avoid a brief flash of a transparent frame on startup).
+    #[cfg(not(windows))]
+    if let Some(window) = app.get_webview_window("main") {
+        window.show()?;
     }
 
     Ok(())
