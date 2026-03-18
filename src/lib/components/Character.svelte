@@ -146,11 +146,7 @@
   });
 </script>
 
-<section class="character-panel" aria-label="Mascot preview">
-  <div class="character-stage">
-    <canvas bind:this={canvas} class="character-canvas"></canvas>
-    {#if errorMessage !== null}
-      <p class="character-overlay">{errorMessage}</p>
-    {/if}
-  </div>
-</section>
+<div class="character-wrapper">
+  <canvas bind:this={canvas} class="character-canvas"></canvas>
+  <div class="drag-region" data-tauri-drag-region></div>
+</div>
