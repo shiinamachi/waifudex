@@ -7,8 +7,8 @@ use std::{
 };
 
 use inochi2d_sys::{
-    inCleanup, inDumpViewport, inParameterSetValue, inPuppetDestroy, inPuppetDraw,
-    inPuppetUpdate, inSceneBegin, inSceneDraw, inSceneEnd, inUpdate, inViewportSet, InPuppet,
+    inCleanup, inDumpViewport, inParameterSetValue, inPuppetDestroy, inPuppetDraw, inPuppetUpdate,
+    inSceneBegin, inSceneDraw, inSceneEnd, inUpdate, inViewportSet, InPuppet,
 };
 use windows_sys::Win32::{
     Foundation::{FreeLibrary, GetLastError, FARPROC, HMODULE, HWND, LPARAM, LRESULT, WPARAM},
@@ -27,7 +27,7 @@ use windows_sys::Win32::{
     },
 };
 
-use super::{flip_rows, initialize_inochi2d, load_params, load_puppet, trace_stage, NativeParam};
+use super::{initialize_inochi2d, load_params, load_puppet, trace_stage, NativeParam};
 use crate::{MascotError, MascotParamValue, ParamInfo, Result};
 
 const WINDOW_CLASS_NAME: &[u8] = b"WaifudexMascotHiddenWindow\0";
@@ -36,8 +36,7 @@ const WGL_CONTEXT_MINOR_VERSION_ARB: i32 = 0x2092;
 const WGL_CONTEXT_PROFILE_MASK_ARB: i32 = 0x9126;
 const WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB: i32 = 0x0000_0002;
 
-type WglCreateContextAttribsArb =
-    unsafe extern "system" fn(HDC, HGLRC, *const i32) -> HGLRC;
+type WglCreateContextAttribsArb = unsafe extern "system" fn(HDC, HGLRC, *const i32) -> HGLRC;
 
 pub struct NativeMascotRenderer {
     window: HiddenWindow,
@@ -84,8 +83,7 @@ impl NativeMascotRenderer {
         }
 
         trace_stage("create modern wgl context");
-        let context =
-            create_modern_context(window.device_context, temporary_context, opengl32)?;
+        let context = create_modern_context(window.device_context, temporary_context, opengl32)?;
         make_not_current()?;
         unsafe {
             wglDeleteContext(temporary_context);
@@ -370,21 +368,6 @@ impl GlFramebuffer {
         })
     }
 
-    fn bind(&self) -> Result<()> {
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.handle);
-        }
-
-        let status = unsafe { gl::CheckFramebufferStatus(gl::FRAMEBUFFER) };
-        if status != gl::FRAMEBUFFER_COMPLETE {
-            return Err(MascotError::NativeContext(format!(
-                "framebuffer lost completeness: 0x{status:04x}"
-            )));
-        }
-
-        Ok(())
-    }
-
     fn destroy(&mut self) {
         unsafe {
             if self.depth_stencil != 0 {
@@ -511,12 +494,10 @@ fn create_modern_context(
     temporary_context: HGLRC,
     opengl32: HMODULE,
 ) -> Result<HGLRC> {
-    let create_context_attribs =
-        load_gl_symbol(opengl32, "wglCreateContextAttribsARB");
+    let create_context_attribs = load_gl_symbol(opengl32, "wglCreateContextAttribsARB");
     if create_context_attribs.is_null() {
         return Err(MascotError::NativeContext(
-            "wglCreateContextAttribsARB is unavailable; OpenGL 3.1+ context required"
-                .to_string(),
+            "wglCreateContextAttribsARB is unavailable; OpenGL 3.1+ context required".to_string(),
         ));
     }
 
@@ -532,7 +513,8 @@ fn create_modern_context(
         0,
     ];
 
-    let context = unsafe { create_context_attribs(device_context, temporary_context, attributes.as_ptr()) };
+    let context =
+        unsafe { create_context_attribs(device_context, temporary_context, attributes.as_ptr()) };
     if context.is_null() {
         return Err(last_win32_error("wglCreateContextAttribsARB failed"));
     }

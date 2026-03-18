@@ -1,7 +1,8 @@
 pub mod codex;
 pub mod contracts;
 pub mod mascot;
-pub mod mascot_commands;
+pub mod mascot_motion;
+pub mod mascot_window;
 pub mod runtime_state;
 pub mod tray;
 pub mod window;
@@ -10,18 +11,17 @@ pub mod window;
 pub fn run() {
     tauri::Builder::default()
         .manage(mascot::MascotManager::new())
+        .manage(mascot_window::MascotWindowState::new())
         .manage(runtime_state::RuntimeState::new())
         .manage(window::WindowVisibilityState::new(2))
         .invoke_handler(tauri::generate_handler![
-            runtime_state::get_runtime_bootstrap,
-            mascot_commands::init_mascot,
-            mascot_commands::update_mascot_params,
-            mascot_commands::resize_mascot,
-            mascot_commands::dispose_mascot
+            runtime_state::get_runtime_bootstrap
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            mascot_window::initialize(&app_handle)?;
+            let _ = mascot::initialize_default_mascot(&app_handle);
             window::configure_main_window(&app_handle)?;
             tray::build_tray(&app_handle)?;
             codex::start_monitor(app_handle);

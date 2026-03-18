@@ -116,6 +116,7 @@ pub(super) fn last_ffi_error() -> MascotError {
     MascotError::NativeFfi(String::from_utf8_lossy(message).into_owned())
 }
 
+#[cfg(target_os = "linux")]
 pub(super) fn flip_rows(rgba: &mut [u8], width: usize, height: usize) {
     let stride = width * 4;
     let mut row = vec![0_u8; stride];

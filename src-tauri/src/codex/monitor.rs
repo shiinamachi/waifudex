@@ -283,8 +283,19 @@ pub fn start_monitor(app: AppHandle) {
             last_logged_session = current_session;
 
             if let Some(status) = supervisor.current_status() {
-                let window_state = app.state::<crate::window::WindowVisibilityState>();
+                if let Some(mascot) = app.try_state::<crate::mascot::MascotManager>() {
+                    let _ = mascot.set_status(status);
+                }
 
+                #[cfg(windows)]
+                if let Some(mascot_window) =
+                    app.try_state::<crate::mascot_window::MascotWindowState>()
+                {
+                    mascot_window.show();
+                    continue;
+                }
+
+                let window_state = app.state::<crate::window::WindowVisibilityState>();
                 if let Ok(visible) = crate::window::is_main_window_visible(&app) {
                     window_state.sync_visible(visible);
                 }

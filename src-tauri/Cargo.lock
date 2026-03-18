@@ -4142,10 +4142,12 @@ dependencies = [
  "sysinfo",
  "tauri",
  "tauri-build",
+ "tauri-runtime-wry",
  "time",
  "tokio",
  "ts-rs",
  "waifudex-mascot",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

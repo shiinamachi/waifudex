@@ -6,12 +6,12 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 
 describe("native mascot migration scaffolding", () => {
-  it("pins the upstream inochi2d-c submodule", () => {
+  it("pins the repository's inochi2d-c submodule source", () => {
     expect(existsSync(resolve(root, ".gitmodules"))).toBe(true);
 
     const source = readFileSync(resolve(root, ".gitmodules"), "utf8");
     expect(source).toMatch(/\[submodule "third_party\/inochi2d-c"\]/);
-    expect(source).toMatch(/url = https:\/\/github\.com\/Inochi2D\/inochi2d-c/);
+    expect(source).toMatch(/url = https:\/\/github\.com\/shiinamachi\/inochi2d-c/);
   });
 
   it("build script targets the yesgl dub configuration and emits into third_party out", () => {

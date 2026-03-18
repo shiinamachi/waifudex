@@ -137,12 +137,21 @@ impl WindowVisibilityState {
     }
 }
 
-pub fn configure_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let _ = app;
+pub fn configure_main_window<R: Runtime>(_app: &AppHandle<R>) -> tauri::Result<()> {
+    #[cfg(windows)]
+    if let Some(window) = _app.get_webview_window("main") {
+        window.hide()?;
+    }
+
     Ok(())
 }
 
 pub fn is_main_window_visible<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<bool> {
+    #[cfg(windows)]
+    if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
+        return Ok(state.is_visible());
+    }
+
     if let Some(window) = app.get_webview_window("main") {
         return window.is_visible();
     }
@@ -151,6 +160,13 @@ pub fn is_main_window_visible<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<b
 }
 
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    #[cfg(windows)]
+    if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
+        state.show();
+        let _ = crate::tray::sync_window_action_label(app);
+        return Ok(());
+    }
+
     if let Some(window) = app.get_webview_window("main") {
         window.show()?;
         let _ = window.set_focus();
@@ -162,6 +178,13 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 }
 
 pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    #[cfg(windows)]
+    if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
+        state.hide();
+        let _ = crate::tray::sync_window_action_label(app);
+        return Ok(());
+    }
+
     if let Some(window) = app.get_webview_window("main") {
         window.hide()?;
     }

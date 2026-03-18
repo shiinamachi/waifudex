@@ -8,23 +8,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 pub use waifudex_mascot::MascotParamValue;
 use waifudex_mascot::MascotRenderer;
 
-pub const MASCOT_FRAME_EVENT: &str = "waifudex://mascot-frame";
+use crate::{contracts::runtime::RuntimeStatus, mascot_motion::create_motion_targets};
 
-const FRAME_INTERVAL: Duration = Duration::from_millis(33);
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MascotFramePayload {
-    pub width: u32,
-    pub height: u32,
-    pub rgba: Vec<u8>,
-    pub revision: u64,
-}
+const FRAME_INTERVAL: Duration = Duration::from_millis(8);
 
 #[derive(Debug, Default)]
 pub struct MascotManager {
@@ -33,6 +23,7 @@ pub struct MascotManager {
 
 #[derive(Debug)]
 struct ActiveMascot {
+    available_params: Vec<String>,
     sender: Sender<RenderCommand>,
     thread: Option<JoinHandle<()>>,
 }
@@ -40,6 +31,7 @@ struct ActiveMascot {
 #[derive(Debug)]
 enum RenderCommand {
     UpdateParams(Vec<MascotParamValue>),
+    SetStatus(RuntimeStatus),
     Resize { width: u32, height: u32 },
     Shutdown,
 }
@@ -56,7 +48,28 @@ impl MascotManager {
         width: u32,
         height: u32,
     ) -> Result<Vec<String>, String> {
-        self.dispose()?;
+        {
+            let guard = self
+                .inner
+                .lock()
+                .map_err(|_| "mascot manager mutex poisoned".to_string())?;
+            if let Some(active) = guard.as_ref() {
+                return Ok(active.available_params.clone());
+            }
+        }
+
+        #[allow(unused_variables)]
+        let (width, height) = (width, height);
+
+        #[cfg(windows)]
+        let (width, height) = if let Some(window_state) =
+            app_handle.try_state::<crate::mascot_window::MascotWindowState>()
+        {
+            let size = window_state.size();
+            (size.width, size.height)
+        } else {
+            (width, height)
+        };
 
         let resolved_model_path = resolve_model_path(&app_handle, &model_path)
             .ok_or_else(|| format!("mascot model path could not be resolved: {model_path}"))?;
@@ -82,6 +95,7 @@ impl MascotManager {
             .map_err(|_| "mascot render thread failed to initialize".to_string())??;
 
         let active = ActiveMascot {
+            available_params: available_params.clone(),
             sender,
             thread: Some(thread),
         };
@@ -105,10 +119,26 @@ impl MascotManager {
     }
 
     pub fn resize(&self, width: u32, height: u32) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            let _ = (width, height);
+            Ok(())
+        }
+
+        #[cfg(not(windows))]
         self.with_active_mut(|active| {
             active
                 .sender
                 .send(RenderCommand::Resize { width, height })
+                .map_err(|_| "mascot render thread is not available".to_string())
+        })
+    }
+
+    pub fn set_status(&self, status: RuntimeStatus) -> Result<(), String> {
+        self.with_active_mut(|active| {
+            active
+                .sender
+                .send(RenderCommand::SetStatus(status))
                 .map_err(|_| "mascot render thread is not available".to_string())
         })
     }
@@ -141,6 +171,11 @@ impl MascotManager {
             .ok_or_else(|| "mascot renderer is not initialized".to_string())?;
         operation(active)
     }
+}
+
+pub fn initialize_default_mascot(app_handle: &AppHandle) -> Result<Vec<String>, String> {
+    let manager = app_handle.state::<MascotManager>();
+    manager.init(app_handle.clone(), "/models/Aka.inx".to_string(), 420, 720)
 }
 
 fn resolve_model_path(app_handle: &AppHandle, model_path: &str) -> Option<PathBuf> {
@@ -234,6 +269,9 @@ fn render_loop(
     };
 
     let mut running = true;
+    let started_at = Instant::now();
+    let mut current_status = RuntimeStatus::Idle;
+    let mut rendered_frames = 0_u64;
 
     while running {
         let started = Instant::now();
@@ -244,6 +282,9 @@ fn render_loop(
                     for param in &params {
                         renderer.set_param(param);
                     }
+                }
+                RenderCommand::SetStatus(status) => {
+                    current_status = status;
                 }
                 RenderCommand::Resize { width, height } => {
                     let _ = renderer.resize(width, height);
@@ -259,26 +300,28 @@ fn render_loop(
             break;
         }
 
-        let payload = {
-            match renderer.render_frame(FRAME_INTERVAL.as_secs_f32()) {
-                Ok(Some(frame)) => {
-                    let rgba = frame.to_vec();
-                    let revision = renderer.revision();
-                    let (width, height) = renderer.dimensions();
-                    Some(MascotFramePayload {
-                        width,
-                        height,
-                        rgba,
-                        revision,
-                    })
-                }
-                Ok(None) => None,
-                Err(_) => None,
-            }
-        };
+        let elapsed_seconds = started_at.elapsed().as_secs_f32();
+        for param in create_motion_targets(current_status, elapsed_seconds) {
+            renderer.set_param(&param);
+        }
 
-        if let Some(payload) = payload {
-            let _ = app_handle.emit(MASCOT_FRAME_EVENT, payload);
+        let (frame_width, frame_height) = renderer.dimensions();
+        if let Ok(Some(frame)) = renderer.render_frame(FRAME_INTERVAL.as_secs_f32()) {
+            rendered_frames = rendered_frames.saturating_add(1);
+
+            #[cfg(windows)]
+            {
+                if rendered_frames % 60 == 0 {
+                    let alpha_pixels = frame.chunks_exact(4).filter(|pixel| pixel[3] > 0).count();
+                    eprintln!(
+                        "waifudex mascot: rendered frame rev={} size={}x{} alpha_pixels={}",
+                        rendered_frames, frame_width, frame_height, alpha_pixels
+                    );
+                }
+            }
+
+            let _ =
+                crate::mascot_window::present_frame(&app_handle, frame_width, frame_height, frame);
         }
 
         let elapsed = started.elapsed();

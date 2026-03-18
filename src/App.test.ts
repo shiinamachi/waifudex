@@ -205,49 +205,33 @@ describe("Runtime UI rendering", () => {
     expect(existsSync(resolve(root, "src/lib/components/TimelinePanel.svelte"))).toBe(true);
   });
 
-  it("creates the mascot character component file", () => {
-    expect(existsSync(resolve(root, "src/lib/components/Character.svelte"))).toBe(true);
-  });
-
-  it("passes the latest runtime status into Character with an idle fallback", () => {
+  it("keeps App free from the mascot presentation surface", () => {
     const source = readFileSync(resolve(root, "src/App.svelte"), "utf8");
-    expect(source).toMatch(/import Character from ".\/lib\/components\/Character\.svelte"/);
-    expect(source).toMatch(/<Character status=\{snapshot\?\.status \?\? "idle"\} \/>/);
+    expect(source).not.toMatch(/Character\.svelte/);
+    expect(source).not.toMatch(/waifudex:\/\/mascot-frame/);
   });
 
-  it("keeps Character responsible for the native mascot canvas loop", () => {
-    const source = readFileSync(resolve(root, "src/lib/components/Character.svelte"), "utf8");
-    expect(source).toMatch(/requestAnimationFrame/);
-    expect(source).toMatch(/<canvas/);
-    expect(source).toMatch(/onMount/);
-    expect(source).toMatch(/initMascot/);
-    expect(source).toMatch(/updateMascotParams/);
-    expect(source).toMatch(/onMascotFrame/);
-    expect(source).toMatch(/disposeMascot/);
+  it("keeps mascot integration out of the App shell", () => {
+    expect(existsSync(resolve(root, "src/lib/mascot/types.ts"))).toBe(false);
+    expect(existsSync(resolve(root, "src/lib/mascot/paramMapper.ts"))).toBe(false);
+    expect(existsSync(resolve(root, "src/lib/mascot/motions"))).toBe(false);
+    expect(existsSync(resolve(root, "src/lib/mascot/transport.ts"))).toBe(false);
+    expect(existsSync(resolve(root, "src/lib/components/Character.svelte"))).toBe(false);
+
+    const appSource = readFileSync(resolve(root, "src/App.svelte"), "utf8");
+    expect(appSource).not.toMatch(/initMascot/);
+    expect(appSource).not.toMatch(/onMascotFrame/);
+    expect(appSource).not.toMatch(/disposeMascot/);
   });
 
-  it("moves mascot integration into the new src\\/lib\\/mascot module", () => {
-    expect(existsSync(resolve(root, "src/lib/mascot/types.ts"))).toBe(true);
-    expect(existsSync(resolve(root, "src/lib/mascot/transport.ts"))).toBe(true);
-    expect(existsSync(resolve(root, "src/lib/mascot/paramMapper.ts"))).toBe(true);
-
-    const characterSource = readFileSync(
-      resolve(root, "src/lib/components/Character.svelte"),
-      "utf8",
-    );
-    expect(characterSource).toMatch(/"\.\.\/mascot\/transport"/);
-    expect(characterSource).toMatch(/"\.\.\/mascot\/paramMapper"/);
-    expect(characterSource).not.toMatch(/"\.\.\/inox2d\//);
-  });
-
-  it("registers mascot commands in the Tauri application", () => {
+  it("keeps native mascot ownership out of the Tauri command surface", () => {
     const source = readFileSync(resolve(root, "src-tauri/src/lib.rs"), "utf8");
     expect(source).toMatch(/pub mod mascot/);
-    expect(source).toMatch(/pub mod mascot_commands/);
-    expect(source).toMatch(/mascot_commands::init_mascot/);
-    expect(source).toMatch(/mascot_commands::update_mascot_params/);
-    expect(source).toMatch(/mascot_commands::resize_mascot/);
-    expect(source).toMatch(/mascot_commands::dispose_mascot/);
+    expect(source).not.toMatch(/pub mod mascot_commands/);
+    expect(source).not.toMatch(/mascot_commands::init_mascot/);
+    expect(source).not.toMatch(/mascot_commands::update_mascot_params/);
+    expect(source).not.toMatch(/mascot_commands::resize_mascot/);
+    expect(source).not.toMatch(/mascot_commands::dispose_mascot/);
   });
 
   it("adds the native mascot crates and build script scaffolding", () => {
