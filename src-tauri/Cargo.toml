@@ -25,3 +25,4 @@ tauri = { version = "=2.10.3", features = ["tray-icon"] }
 time = { version = "=0.3.47", features = ["formatting"] }
 tokio = { version = "=1.50.0", features = ["macros", "rt-multi-thread", "time"] }
 ts-rs = "=12.0.1"
+waifudex-mascot = { path = "../crates/waifudex-mascot", features = ["native-inochi2d"] }

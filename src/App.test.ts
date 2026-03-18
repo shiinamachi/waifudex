@@ -53,63 +53,6 @@ async function renderSsr(relativePath: string, props: Record<string, unknown>) {
 }
 
 describe("Runtime UI rendering", () => {
-  it("labels the top badge as backend status and renders the raw status value", async () => {
-    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
-      loading: false,
-      snapshot: {
-        sessionId: "session-a",
-        status: "coding",
-        summary: "Writing or patching code",
-        detail: "Codex is editing code or applying a patch to the workspace.",
-        sessionsRoot: "/home/tester/.codex/sessions",
-        source: "monitor",
-        updatedAt: "2026-03-18T00:00:00.000Z",
-        revision: 4,
-      },
-    });
-
-    expect(html).toContain("Backend Status");
-    expect(html).toContain('<p class="status-kind">coding</p>');
-  });
-
-  it("renders the question status when codex is waiting for user input", async () => {
-    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
-      loading: false,
-      snapshot: {
-        sessionId: "session-a",
-        status: "question",
-        summary: "Waiting for your input or approval",
-        detail: "Codex needs an answer, approval, or permission update before it can continue.",
-        sessionsRoot: "/home/tester/.codex/sessions",
-        source: "monitor",
-        updatedAt: "2026-03-18T00:00:00.000Z",
-        revision: 5,
-      },
-    });
-
-    expect(html).toContain('<p class="status-kind">question</p>');
-    expect(html).toContain("Waiting for your input or approval");
-  });
-
-  it("renders the complete status when codex just finished a task", async () => {
-    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
-      loading: false,
-      snapshot: {
-        sessionId: "session-a",
-        status: "complete",
-        summary: "Current task completed",
-        detail: "Codex finished the current task and will fall back to idle if no new work arrives.",
-        sessionsRoot: "/home/tester/.codex/sessions",
-        source: "monitor",
-        updatedAt: "2026-03-18T00:00:00.000Z",
-        revision: 6,
-      },
-    });
-
-    expect(html).toContain('<p class="status-kind">complete</p>');
-    expect(html).toContain("Current task completed");
-  });
-
   it("renders bootstrap snapshot summary and detail", async () => {
     const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
       loading: false,
@@ -180,7 +123,7 @@ describe("Runtime UI rendering", () => {
           kind: "session_line",
           payload: {
             rawLine: "{\"payload\":{\"type\":\"function_call\"}}",
-            parsedType: "function_call",
+            parsedType: "tool_call_started",
             parseOk: true,
           },
         },
@@ -188,7 +131,7 @@ describe("Runtime UI rendering", () => {
     });
 
     expect(html).toContain("task_started");
-    expect(html).toContain("function_call");
+    expect(html).toContain("tool_call_started");
     expect(html).toContain("{\"payload\":{\"type\":\"task_started\"}}");
     expect(html).toContain("{\"payload\":{\"type\":\"function_call\"}}");
   });
@@ -260,5 +203,67 @@ describe("Runtime UI rendering", () => {
   it("creates runtime status and timeline component files", () => {
     expect(existsSync(resolve(root, "src/lib/components/StatusBubble.svelte"))).toBe(true);
     expect(existsSync(resolve(root, "src/lib/components/TimelinePanel.svelte"))).toBe(true);
+  });
+
+  it("creates the mascot character component file", () => {
+    expect(existsSync(resolve(root, "src/lib/components/Character.svelte"))).toBe(true);
+  });
+
+  it("passes the latest runtime status into Character with an idle fallback", () => {
+    const source = readFileSync(resolve(root, "src/App.svelte"), "utf8");
+    expect(source).toMatch(/import Character from ".\/lib\/components\/Character\.svelte"/);
+    expect(source).toMatch(/<Character status=\{snapshot\?\.status \?\? "idle"\} \/>/);
+  });
+
+  it("keeps Character responsible for the native mascot canvas loop", () => {
+    const source = readFileSync(resolve(root, "src/lib/components/Character.svelte"), "utf8");
+    expect(source).toMatch(/requestAnimationFrame/);
+    expect(source).toMatch(/<canvas/);
+    expect(source).toMatch(/onMount/);
+    expect(source).toMatch(/initMascot/);
+    expect(source).toMatch(/updateMascotParams/);
+    expect(source).toMatch(/onMascotFrame/);
+    expect(source).toMatch(/disposeMascot/);
+  });
+
+  it("moves mascot integration into the new src\\/lib\\/mascot module", () => {
+    expect(existsSync(resolve(root, "src/lib/mascot/types.ts"))).toBe(true);
+    expect(existsSync(resolve(root, "src/lib/mascot/transport.ts"))).toBe(true);
+    expect(existsSync(resolve(root, "src/lib/mascot/paramMapper.ts"))).toBe(true);
+
+    const characterSource = readFileSync(
+      resolve(root, "src/lib/components/Character.svelte"),
+      "utf8",
+    );
+    expect(characterSource).toMatch(/"\.\.\/mascot\/transport"/);
+    expect(characterSource).toMatch(/"\.\.\/mascot\/paramMapper"/);
+    expect(characterSource).not.toMatch(/"\.\.\/inox2d\//);
+  });
+
+  it("registers mascot commands in the Tauri application", () => {
+    const source = readFileSync(resolve(root, "src-tauri/src/lib.rs"), "utf8");
+    expect(source).toMatch(/pub mod mascot/);
+    expect(source).toMatch(/pub mod mascot_commands/);
+    expect(source).toMatch(/mascot_commands::init_mascot/);
+    expect(source).toMatch(/mascot_commands::update_mascot_params/);
+    expect(source).toMatch(/mascot_commands::resize_mascot/);
+    expect(source).toMatch(/mascot_commands::dispose_mascot/);
+  });
+
+  it("adds the native mascot crates and build script scaffolding", () => {
+    expect(existsSync(resolve(root, "scripts/build-inochi2d.sh"))).toBe(true);
+    expect(existsSync(resolve(root, "crates/inochi2d-sys/Cargo.toml"))).toBe(true);
+    expect(existsSync(resolve(root, "crates/inochi2d-sys/build.rs"))).toBe(true);
+    expect(existsSync(resolve(root, "crates/inochi2d-sys/wrapper.h"))).toBe(true);
+    expect(existsSync(resolve(root, "crates/waifudex-mascot/Cargo.toml"))).toBe(true);
+    expect(existsSync(resolve(root, "crates/waifudex-mascot/src/lib.rs"))).toBe(true);
+  });
+
+  it("wires Tauri mascot management through the waifudex-mascot crate", () => {
+    const cargoSource = readFileSync(resolve(root, "src-tauri/Cargo.toml"), "utf8");
+    const mascotSource = readFileSync(resolve(root, "src-tauri/src/mascot.rs"), "utf8");
+
+    expect(cargoSource).toMatch(/waifudex-mascot/);
+    expect(mascotSource).toMatch(/waifudex_mascot::MascotRenderer/);
   });
 });

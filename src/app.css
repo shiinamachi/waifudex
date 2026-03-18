@@ -64,10 +64,17 @@ body {
 
 .app-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(18rem, 0.9fr) minmax(0, 1.1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.app-sidebar {
+  display: grid;
   gap: 1rem;
 }
 
+.character-panel,
 .status-bubble,
 .timeline-panel {
   border: 1px solid var(--panel-border);
@@ -76,6 +83,44 @@ body {
   backdrop-filter: blur(8px);
   box-shadow: 0 14px 32px rgba(20, 44, 70, 0.09);
   animation: enter 260ms ease-out both;
+}
+
+.character-panel {
+  padding: 0.8rem;
+}
+
+.character-stage {
+  position: relative;
+  min-height: 26rem;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(254, 248, 218, 0.95), transparent 35%),
+    radial-gradient(circle at 80% 25%, rgba(215, 239, 255, 0.92), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(239, 248, 255, 0.62));
+}
+
+.character-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: transparent;
+}
+
+.character-overlay {
+  position: absolute;
+  left: 0.85rem;
+  right: 0.85rem;
+  bottom: 0.85rem;
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(18, 36, 58, 0.72);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .status-bubble {
@@ -231,6 +276,10 @@ body {
 @media (max-width: 860px) {
   .app-grid {
     grid-template-columns: 1fr;
+  }
+
+  .character-stage {
+    min-height: 18rem;
   }
 
   .timeline-list {

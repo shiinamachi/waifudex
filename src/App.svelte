@@ -5,6 +5,7 @@
     RuntimeEvent,
     RuntimeSnapshot,
   } from "./lib/contracts/generated/runtime";
+  import Character from "./lib/components/Character.svelte";
   import StatusBubble from "./lib/components/StatusBubble.svelte";
   import TimelinePanel from "./lib/components/TimelinePanel.svelte";
   import type { RuntimeStoreState } from "./lib/stores/runtimeStore.svelte";
@@ -50,7 +51,10 @@
   </header>
 
   <div class="app-grid">
-    <StatusBubble {loading} {snapshot} />
-    <TimelinePanel events={timeline} />
+    <Character status={snapshot?.status ?? "idle"} />
+    <div class="app-sidebar">
+      <StatusBubble {loading} {snapshot} />
+      <TimelinePanel events={timeline} />
+    </div>
   </div>
 </main>
