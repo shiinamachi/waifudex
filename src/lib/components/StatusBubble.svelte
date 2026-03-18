@@ -9,7 +9,7 @@
 
 <section class="status-bubble" aria-live="polite">
   <header class="status-header">
-    <p class="status-eyebrow">Current Snapshot</p>
+    <p class="status-eyebrow">Backend Status</p>
     {#if snapshot !== null}
       <p class="status-kind">{snapshot.status}</p>
     {/if}

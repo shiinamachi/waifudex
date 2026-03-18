@@ -11,3 +11,8 @@ Codex status monitoring tool with kawaii character.
 - Having an anime character on the screen makes you look like a skilled developer. (Seriously)
 
 - **Kawaiiiiiii**
+
+## Features
+
+- Codex CLI Live Monitoring
+- Kawaii Agent in my Desktop

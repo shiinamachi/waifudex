@@ -11,10 +11,9 @@ pub enum RuntimeStatus {
     Idle,
     CodexNotInstalled,
     Thinking,
-    Writing,
-    RunningTests,
-    Success,
-    Error,
+    Coding,
+    Question,
+    Complete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -107,8 +106,12 @@ mod runtime_contract_tests {
 
     #[test]
     fn runtime_status_serializes_to_snake_case() {
-        let value = serde_json::to_value(RuntimeStatus::RunningTests).expect("serialize status");
-        assert_eq!(value, json!("running_tests"));
+        let value = serde_json::to_value(RuntimeStatus::Coding).expect("serialize status");
+        assert_eq!(value, json!("coding"));
+        let value = serde_json::to_value(RuntimeStatus::Question).expect("serialize status");
+        assert_eq!(value, json!("question"));
+        let value = serde_json::to_value(RuntimeStatus::Complete).expect("serialize status");
+        assert_eq!(value, json!("complete"));
         let value =
             serde_json::to_value(RuntimeStatus::CodexNotInstalled).expect("serialize status");
         assert_eq!(value, json!("codex_not_installed"));

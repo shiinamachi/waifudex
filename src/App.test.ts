@@ -53,6 +53,63 @@ async function renderSsr(relativePath: string, props: Record<string, unknown>) {
 }
 
 describe("Runtime UI rendering", () => {
+  it("labels the top badge as backend status and renders the raw status value", async () => {
+    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
+      loading: false,
+      snapshot: {
+        sessionId: "session-a",
+        status: "coding",
+        summary: "Writing or patching code",
+        detail: "Codex is editing code or applying a patch to the workspace.",
+        sessionsRoot: "/home/tester/.codex/sessions",
+        source: "monitor",
+        updatedAt: "2026-03-18T00:00:00.000Z",
+        revision: 4,
+      },
+    });
+
+    expect(html).toContain("Backend Status");
+    expect(html).toContain('<p class="status-kind">coding</p>');
+  });
+
+  it("renders the question status when codex is waiting for user input", async () => {
+    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
+      loading: false,
+      snapshot: {
+        sessionId: "session-a",
+        status: "question",
+        summary: "Waiting for your input or approval",
+        detail: "Codex needs an answer, approval, or permission update before it can continue.",
+        sessionsRoot: "/home/tester/.codex/sessions",
+        source: "monitor",
+        updatedAt: "2026-03-18T00:00:00.000Z",
+        revision: 5,
+      },
+    });
+
+    expect(html).toContain('<p class="status-kind">question</p>');
+    expect(html).toContain("Waiting for your input or approval");
+  });
+
+  it("renders the complete status when codex just finished a task", async () => {
+    const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
+      loading: false,
+      snapshot: {
+        sessionId: "session-a",
+        status: "complete",
+        summary: "Current task completed",
+        detail: "Codex finished the current task and will fall back to idle if no new work arrives.",
+        sessionsRoot: "/home/tester/.codex/sessions",
+        source: "monitor",
+        updatedAt: "2026-03-18T00:00:00.000Z",
+        revision: 6,
+      },
+    });
+
+    expect(html).toContain('<p class="status-kind">complete</p>');
+    expect(html).toContain("Current task completed");
+  });
+
   it("renders bootstrap snapshot summary and detail", async () => {
     const html = await renderSsr("src/lib/components/StatusBubble.svelte", {
       loading: false,
@@ -123,7 +180,7 @@ describe("Runtime UI rendering", () => {
           kind: "session_line",
           payload: {
             rawLine: "{\"payload\":{\"type\":\"function_call\"}}",
-            parsedType: "tool_call_started",
+            parsedType: "function_call",
             parseOk: true,
           },
         },
@@ -131,7 +188,7 @@ describe("Runtime UI rendering", () => {
     });
 
     expect(html).toContain("task_started");
-    expect(html).toContain("tool_call_started");
+    expect(html).toContain("function_call");
     expect(html).toContain("{\"payload\":{\"type\":\"task_started\"}}");
     expect(html).toContain("{\"payload\":{\"type\":\"function_call\"}}");
   });

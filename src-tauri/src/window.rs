@@ -84,12 +84,11 @@ impl WindowVisibilityPolicy {
                     WindowCommand::Noop
                 }
             }
-            StatusKind::Error
-            | StatusKind::CodexNotInstalled
+            StatusKind::CodexNotInstalled
             | StatusKind::Thinking
-            | StatusKind::Writing
-            | StatusKind::RunningTests
-            | StatusKind::Success => {
+            | StatusKind::Coding
+            | StatusKind::Question
+            | StatusKind::Complete => {
                 self.idle_polls = 0;
                 if self.visible {
                     WindowCommand::Noop
@@ -224,7 +223,7 @@ mod window_policy_tests {
         let mut policy = WindowVisibilityPolicy::new(2);
         let _ = policy.on_status(StatusKind::Thinking);
 
-        assert_eq!(policy.on_status(StatusKind::Error), WindowCommand::Noop);
+        assert_eq!(policy.on_status(StatusKind::Question), WindowCommand::Noop);
         assert!(policy.is_visible());
     }
 
@@ -243,7 +242,7 @@ mod window_policy_tests {
     #[test]
     fn hides_after_idle_grace_period_expires() {
         let mut policy = WindowVisibilityPolicy::new(2);
-        let _ = policy.on_status(StatusKind::Writing);
+        let _ = policy.on_status(StatusKind::Coding);
 
         assert_eq!(policy.on_status(StatusKind::Idle), WindowCommand::Noop);
         assert!(policy.is_visible());
@@ -259,7 +258,16 @@ mod window_policy_tests {
 
         policy.sync_visible(false);
 
-        assert_eq!(policy.on_status(StatusKind::Writing), WindowCommand::Show);
+        assert_eq!(policy.on_status(StatusKind::Coding), WindowCommand::Show);
+        assert!(policy.is_visible());
+    }
+
+    #[test]
+    fn keeps_the_window_visible_during_complete_state() {
+        let mut policy = WindowVisibilityPolicy::new(2);
+        let _ = policy.on_status(StatusKind::Thinking);
+
+        assert_eq!(policy.on_status(StatusKind::Complete), WindowCommand::Noop);
         assert!(policy.is_visible());
     }
 

@@ -4,7 +4,7 @@
 export const RUNTIME_SNAPSHOT_EVENT = "waifudex://runtime-snapshot" as const;
 export const RUNTIME_EVENT_STREAM = "waifudex://runtime-event" as const;
 
-export type RuntimeStatus = "idle" | "codex_not_installed" | "thinking" | "writing" | "running_tests" | "success" | "error";
+export type RuntimeStatus = "idle" | "codex_not_installed" | "thinking" | "coding" | "question" | "complete";
 
 export type RuntimeSnapshot = { sessionId: string | null, status: RuntimeStatus, summary: string, detail: string, sessionsRoot: string, source: string, updatedAt: string, revision: number, };
 

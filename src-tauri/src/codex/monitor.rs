@@ -2,7 +2,7 @@ use std::{
     ffi::OsStr,
     io,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use tauri::{AppHandle, Emitter, Manager};
@@ -95,6 +95,14 @@ impl MonitorSupervisor {
     }
 
     pub(crate) fn tick(&mut self, liveness: LivenessSnapshot) -> io::Result<TickOutput> {
+        self.tick_at(liveness, Instant::now())
+    }
+
+    pub(crate) fn tick_at(
+        &mut self,
+        liveness: LivenessSnapshot,
+        now: Instant,
+    ) -> io::Result<TickOutput> {
         let mut timeline_records = Vec::new();
 
         let snapshot_candidate = if !self.backend.sessions_root_available() {
@@ -111,11 +119,12 @@ impl MonitorSupervisor {
             let lines = self.backend.read_new_lines(&candidate)?;
 
             if lines.is_empty() {
-                self.reducer.reduce(
+                self.reducer.reduce_at(
                     None,
                     session_id,
                     self.backend.sessions_root_display(),
                     liveness,
+                    now,
                 )
             } else {
                 let mut latest_snapshot = None;
@@ -129,19 +138,25 @@ impl MonitorSupervisor {
                             parse_ok: event.parse_ok(),
                         },
                     });
-                    latest_snapshot = Some(self.reducer.reduce(
+                    latest_snapshot = Some(self.reducer.reduce_at(
                         Some(&event),
                         session_id.clone(),
                         self.backend.sessions_root_display(),
                         liveness,
+                        now,
                     ));
                 }
                 latest_snapshot.expect("non-empty line batch produced a snapshot")
             }
         } else {
             self.active_session_path = None;
-            self.reducer
-                .reduce(None, None, self.backend.sessions_root_display(), liveness)
+            self.reducer.reduce_at(
+                None,
+                None,
+                self.backend.sessions_root_display(),
+                liveness,
+                now,
+            )
         };
         let material = SnapshotMaterial::from_snapshot(&snapshot_candidate);
         let snapshot = if self.last_material == Some(material.clone()) {
@@ -220,7 +235,7 @@ pub fn start_monitor(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let backend = select_session_backend();
         let mut supervisor = MonitorSupervisor::from_boxed_backend(backend, "monitor");
-        let probe = LivenessProbe::new("codex");
+        let mut probe = LivenessProbe::new("codex");
         let mut ticker = tokio::time::interval(Duration::from_millis(MONITOR_POLL_INTERVAL_MS));
         let mut last_logged_session: Option<PathBuf> = None;
         let mut last_logged_status: Option<StatusKind> = None;
@@ -230,7 +245,11 @@ pub fn start_monitor(app: AppHandle) {
             supervisor.maybe_refresh_backend();
 
             let runtime_state = app.state::<RuntimeState>();
-            match collect_tick_emissions(&mut supervisor, &runtime_state, probe.snapshot()) {
+            let liveness = probe.snapshot(
+                supervisor.backend.backend_kind(),
+                supervisor.backend.sessions_root_display(),
+            );
+            match collect_tick_emissions(&mut supervisor, &runtime_state, liveness) {
                 Ok(emissions) => {
                     for timeline_event in emissions.timeline {
                         let _ = app.emit(RUNTIME_EVENT_STREAM, timeline_event);
@@ -401,10 +420,9 @@ fn status_label(status: StatusKind) -> &'static str {
         StatusKind::Idle => "idle",
         StatusKind::CodexNotInstalled => "codex_not_installed",
         StatusKind::Thinking => "thinking",
-        StatusKind::Writing => "writing",
-        StatusKind::RunningTests => "running_tests",
-        StatusKind::Success => "success",
-        StatusKind::Error => "error",
+        StatusKind::Coding => "coding",
+        StatusKind::Question => "question",
+        StatusKind::Complete => "complete",
     }
 }
 
@@ -413,7 +431,7 @@ mod monitor_tests {
     use std::{
         fs,
         path::{Path, PathBuf},
-        time::{SystemTime, UNIX_EPOCH},
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
     use crate::codex::{
@@ -592,7 +610,7 @@ mod monitor_tests {
         );
         assert_eq!(
             batch.timeline[1].payload.parsed_type.as_deref(),
-            Some("tool_call_started")
+            Some("function_call")
         );
         assert!(batch.timeline[0].payload.parse_ok);
         assert!(batch.timeline[1].payload.parse_ok);
@@ -692,7 +710,7 @@ mod monitor_tests {
             .snapshot
             .expect("active snapshot exists");
 
-        assert_eq!(payload.status, StatusKind::RunningTests);
+        assert_eq!(payload.status, StatusKind::Thinking);
 
         fs::remove_dir_all(root).expect("cleanup temp root");
     }
@@ -707,15 +725,16 @@ mod monitor_tests {
         );
 
         let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+        let now = Instant::now();
         let active = supervisor
-            .tick(LivenessSnapshot::online())
+            .tick_at(LivenessSnapshot::online(), now)
             .expect("active tick succeeds")
             .snapshot
             .expect("active snapshot exists");
         assert_eq!(active.status, StatusKind::Thinking);
 
         let idle = supervisor
-            .tick(LivenessSnapshot::offline())
+            .tick_at(LivenessSnapshot::offline(), now + Duration::from_secs(31))
             .expect("idle tick succeeds")
             .snapshot
             .expect("idle snapshot exists");
@@ -746,7 +765,35 @@ mod monitor_tests {
             .snapshot
             .expect("batch snapshot exists");
 
-        assert_eq!(payload.status, StatusKind::RunningTests);
+        assert_eq!(payload.status, StatusKind::Thinking);
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn expires_complete_to_idle_after_grace_period_with_no_new_events() {
+        let root = create_temp_root();
+        let rollout = root.join("2026/03/17/rollout-complete.jsonl");
+        write_file(
+            &rollout,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"abc\"}}\n",
+        );
+
+        let mut supervisor = MonitorSupervisor::new(root.clone(), "monitor");
+        let now = Instant::now();
+        let complete = supervisor
+            .tick_at(LivenessSnapshot::online(), now)
+            .expect("complete tick succeeds")
+            .snapshot
+            .expect("complete snapshot exists");
+        assert_eq!(complete.status, StatusKind::Complete);
+
+        let idle = supervisor
+            .tick_at(LivenessSnapshot::offline(), now + Duration::from_secs(11))
+            .expect("idle tick succeeds")
+            .snapshot
+            .expect("idle snapshot exists");
+        assert_eq!(idle.status, StatusKind::Idle);
 
         fs::remove_dir_all(root).expect("cleanup temp root");
     }
