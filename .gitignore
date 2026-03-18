@@ -8,4 +8,11 @@ src-tauri/gen
 AGENTS.md
 docs
 src-tauri/tests
+.worktress
 .worktrees
+third_party/inochi2d-c/out
+crates/waifudex-inox2d-wasm/pkg
+crates/waifudex-inox2d-wasm/target
+third_party/inochi2d-c/out
+third_party/inochi2d-c/.dub
+crates/waifudex-mascot/target
