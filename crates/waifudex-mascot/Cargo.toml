@@ -1,0 +1,15 @@
+[package]
+name = "waifudex-mascot"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+native-inochi2d = ["dep:gl", "dep:inochi2d-sys", "dep:khronos-egl"]
+
+[dependencies]
+gl = { version = "=0.14.0", optional = true }
+inochi2d-sys = { path = "../inochi2d-sys", optional = true }
+khronos-egl = { version = "=6.0.0", features = ["dynamic"], optional = true }
+serde = { version = "=1.0.228", features = ["derive"] }
+thiserror = "=2.0.18"
