@@ -1,0 +1,18 @@
+{
+  "name": "waifudex-inox2d-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "pkg"
+  ],
+  "main": "./pkg/waifudex_inox2d_wasm.js",
+  "module": "./pkg/waifudex_inox2d_wasm.js",
+  "types": "./pkg/waifudex_inox2d_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/waifudex_inox2d_wasm.d.ts",
+      "default": "./pkg/waifudex_inox2d_wasm.js"
+    }
+  }
+}
