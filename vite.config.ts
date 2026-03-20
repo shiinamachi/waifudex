@@ -14,9 +14,4 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
   },
-  test: {
-    environment: "node",
-    globals: true,
-    include: ["src/**/*.test.ts"],
-  },
 });

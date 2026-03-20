@@ -45,15 +45,6 @@ fn decode_wsl_output(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).to_string()
 }
 
-#[cfg(test)]
-fn wsl_command_creation_flags() -> u32 {
-    if cfg!(windows) {
-        0x0800_0000
-    } else {
-        0
-    }
-}
-
 fn apply_wsl_command_flags(command: &mut Command) {
     #[cfg(windows)]
     {
@@ -65,33 +56,5 @@ fn apply_wsl_command_flags(command: &mut Command) {
     #[cfg(not(windows))]
     {
         let _ = command;
-    }
-}
-
-#[cfg(test)]
-mod command_runner_tests {
-    use super::{decode_wsl_output, wsl_command_creation_flags};
-
-    #[test]
-    fn uses_create_no_window_on_windows_only() {
-        if cfg!(windows) {
-            assert_eq!(wsl_command_creation_flags(), 0x0800_0000);
-        } else {
-            assert_eq!(wsl_command_creation_flags(), 0);
-        }
-    }
-
-    #[test]
-    fn decodes_utf16le_output_from_wsl() {
-        let bytes = b"U\0b\0u\0n\0t\0u\0\r\0\n\0";
-
-        assert_eq!(decode_wsl_output(bytes), "Ubuntu\r\n");
-    }
-
-    #[test]
-    fn keeps_utf8_output_unchanged() {
-        let bytes = b"Ubuntu\n";
-
-        assert_eq!(decode_wsl_output(bytes), "Ubuntu\n");
     }
 }

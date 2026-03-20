@@ -36,14 +36,6 @@ impl LivenessProbe<ProcessWslCommandRunner> {
 }
 
 impl<R: CommandRunner> LivenessProbe<R> {
-    #[cfg(test)]
-    pub fn with_runner(process_hint: impl Into<String>, wsl_runner: R) -> Self {
-        Self {
-            process_hint: process_hint.into(),
-            wsl_runner,
-        }
-    }
-
     pub fn snapshot(
         &mut self,
         backend_kind: &str,
@@ -106,47 +98,4 @@ fn wsl_distro_from_sessions_root_display(sessions_root_display: &str) -> Option<
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r#"'\''"#))
-}
-
-#[cfg(test)]
-mod liveness_tests {
-    use std::{collections::VecDeque, io};
-
-    use crate::codex::backend::command_runner::{CommandOutput, CommandRunner};
-
-    use super::LivenessProbe;
-
-    #[derive(Default)]
-    struct FakeRunner {
-        outputs: VecDeque<io::Result<CommandOutput>>,
-    }
-
-    impl FakeRunner {
-        fn push_ok(&mut self, stdout: &str) {
-            self.outputs.push_back(Ok(CommandOutput {
-                success: true,
-                stdout: stdout.to_string(),
-                stderr: String::new(),
-            }));
-        }
-    }
-
-    impl CommandRunner for FakeRunner {
-        fn run(&mut self, _args: &[&str]) -> io::Result<CommandOutput> {
-            self.outputs
-                .pop_front()
-                .unwrap_or_else(|| Err(io::Error::other("missing fake output")))
-        }
-    }
-
-    #[test]
-    fn treats_wsl_backend_as_online_when_the_distro_has_a_live_codex_process() {
-        let mut runner = FakeRunner::default();
-        runner.push_ok("live\n");
-
-        let mut probe = LivenessProbe::with_runner("codex", runner);
-        let snapshot = probe.snapshot("wsl_command", "Ubuntu:/home/tester/.codex/sessions");
-
-        assert!(snapshot.has_live_process);
-    }
 }

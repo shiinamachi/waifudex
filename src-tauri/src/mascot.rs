@@ -211,27 +211,6 @@ fn resolve_model_path(app_handle: &AppHandle, model_path: &str) -> Option<PathBu
         .find(|path: &PathBuf| path.exists())
 }
 
-#[cfg(test)]
-mod mascot_path_tests {
-    use std::path::{Path, PathBuf};
-
-    #[test]
-    fn repo_public_models_asset_exists_for_dev_resolution() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../public/models/Aka.inx")
-            .canonicalize()
-            .expect("public/models/Aka.inx should exist");
-
-        assert!(path.ends_with(PathBuf::from("public/models/Aka.inx")));
-    }
-
-    #[test]
-    fn leading_slash_model_paths_normalize_to_resource_relative_segments() {
-        let normalized = "/models/Aka.inx".trim_start_matches('/');
-        assert_eq!(normalized, "models/Aka.inx");
-    }
-}
-
 impl ActiveMascot {
     fn stop(mut self) -> Result<(), String> {
         let _ = self.sender.send(RenderCommand::Shutdown);

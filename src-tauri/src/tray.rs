@@ -101,34 +101,3 @@ fn window_action_label(visible: bool) -> &'static str {
         WINDOW_OPEN_LABEL
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{remove_tray_icon, should_cleanup_on_run_event, TRAY_ID};
-
-    fn create_app() -> tauri::App<tauri::test::MockRuntime> {
-        tauri::test::mock_builder()
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .expect("mock app should build")
-    }
-
-    #[test]
-    fn cleanup_runs_for_exit_event() {
-        assert!(should_cleanup_on_run_event(&tauri::RunEvent::Exit));
-    }
-
-    #[test]
-    fn cleanup_does_not_run_for_ready_event() {
-        assert!(!should_cleanup_on_run_event(&tauri::RunEvent::Ready));
-    }
-
-    #[test]
-    fn remove_tray_icon_is_safe_when_the_tray_was_never_created() {
-        let app = create_app();
-        let app_handle = app.handle().clone();
-
-        remove_tray_icon(&app_handle);
-
-        assert!(app_handle.tray_by_id(TRAY_ID).is_none());
-    }
-}

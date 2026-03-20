@@ -2,12 +2,10 @@ node_modules
 dist
 .svelte-kit
 .vite
-coverage
 src-tauri/target
 src-tauri/gen
 AGENTS.md
 docs
-src-tauri/tests
 .worktress
 .worktrees
 third_party/inochi2d-c/out

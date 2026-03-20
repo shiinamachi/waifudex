@@ -129,10 +129,7 @@ pub(super) fn flip_rows(rgba: &mut [u8], width: usize, height: usize) {
     }
 }
 
-pub(super) fn trace_stage(_stage: &str) {
-    #[cfg(test)]
-    eprintln!("[waifudex-mascot] {_stage}");
-}
+pub(super) fn trace_stage(_stage: &str) {}
 
 #[cfg(target_os = "linux")]
 mod linux;

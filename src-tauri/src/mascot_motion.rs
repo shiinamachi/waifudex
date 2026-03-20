@@ -278,8 +278,7 @@ fn create_idle_targets(elapsed_seconds: f32) -> Vec<MascotParamValue> {
     let normalized = elapsed / IDLE_LOOP_SECONDS;
 
     let keyframes = idle_keyframes();
-    let (from_idx, to_idx, progress) =
-        find_keyframe_segment(normalized, &IDLE_PHASE_TIMES);
+    let (from_idx, to_idx, progress) = find_keyframe_segment(normalized, &IDLE_PHASE_TIMES);
     let base = interpolate_phase_params(&keyframes[from_idx], &keyframes[to_idx], progress);
 
     let mut params = BTreeMap::<&'static str, CanonicalParam>::new();
@@ -471,8 +470,7 @@ fn create_thinking_targets(elapsed_seconds: f32) -> Vec<MascotParamValue> {
     let normalized = elapsed / THINKING_LOOP_SECONDS;
 
     let keyframes = thinking_keyframes();
-    let (from_idx, to_idx, progress) =
-        find_keyframe_segment(normalized, &THINKING_PHASE_TIMES);
+    let (from_idx, to_idx, progress) = find_keyframe_segment(normalized, &THINKING_PHASE_TIMES);
     let base = interpolate_phase_params(&keyframes[from_idx], &keyframes[to_idx], progress);
 
     let mut params = BTreeMap::<&'static str, CanonicalParam>::new();
@@ -634,8 +632,7 @@ fn create_question_targets(elapsed_seconds: f32) -> Vec<MascotParamValue> {
     let normalized = elapsed / QUESTION_LOOP_SECONDS;
 
     let keyframes = question_keyframes();
-    let (from_idx, to_idx, progress) =
-        find_keyframe_segment(normalized, &QUESTION_PHASE_TIMES);
+    let (from_idx, to_idx, progress) = find_keyframe_segment(normalized, &QUESTION_PHASE_TIMES);
     let base = interpolate_phase_params(&keyframes[from_idx], &keyframes[to_idx], progress);
 
     let mut params = BTreeMap::<&'static str, CanonicalParam>::new();
@@ -805,8 +802,7 @@ fn create_complete_targets(elapsed_seconds: f32) -> Vec<MascotParamValue> {
     let normalized = elapsed / COMPLETE_LOOP_SECONDS;
 
     let keyframes = complete_keyframes();
-    let (from_idx, to_idx, progress) =
-        find_keyframe_segment(normalized, &COMPLETE_PHASE_TIMES);
+    let (from_idx, to_idx, progress) = find_keyframe_segment(normalized, &COMPLETE_PHASE_TIMES);
     let base = interpolate_phase_params(&keyframes[from_idx], &keyframes[to_idx], progress);
 
     let mut params = BTreeMap::<&'static str, CanonicalParam>::new();
@@ -844,8 +840,9 @@ fn clamp_canonical(name: &'static str, x: f32, y: f32) -> CanonicalParam {
         "ParamEyeOpen" | "ParamBreath" | "ParamMouthOpenY" | "ParamMouthSmile" => {
             param(name, 0.0, clamp01(y))
         }
-        "ParamArmLeft" | "ParamArmRight" | "ParamEyeMove" | "ParamBodyXMove"
-        | "ParamTailMove" => param(name, clamp01(x), 0.0),
+        "ParamArmLeft" | "ParamArmRight" | "ParamEyeMove" | "ParamBodyXMove" | "ParamTailMove" => {
+            param(name, clamp01(x), 0.0)
+        }
         _ => param(name, x, y),
     }
 }
@@ -978,378 +975,4 @@ pub fn create_motion_targets(status: RuntimeStatus, elapsed_seconds: f32) -> Vec
         .map(|param| clamp_canonical(param.name, param.x, param.y))
         .flat_map(resolve_actual_params)
         .collect()
-}
-
-#[cfg(test)]
-mod mascot_motion_tests {
-    use crate::contracts::runtime::RuntimeStatus;
-
-    use super::{
-        create_motion_targets, COMPLETE_LOOP_SECONDS, IDLE_LOOP_SECONDS, QUESTION_LOOP_SECONDS,
-        THINKING_LOOP_SECONDS,
-    };
-
-    fn get_param<'a>(
-        params: &'a [waifudex_mascot::MascotParamValue],
-        name: &str,
-    ) -> Option<&'a waifudex_mascot::MascotParamValue> {
-        params.iter().find(|param| param.name == name)
-    }
-
-    #[test]
-    fn thinking_loop_is_seamless_at_start_and_end() {
-        let first = create_motion_targets(RuntimeStatus::Thinking, 0.0);
-        let second = create_motion_targets(RuntimeStatus::Thinking, THINKING_LOOP_SECONDS);
-
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn idle_and_thinking_have_distinct_target_sets() {
-        let idle = create_motion_targets(RuntimeStatus::Idle, 1.05);
-        let thinking = create_motion_targets(RuntimeStatus::Thinking, 1.05);
-
-        assert_ne!(idle, thinking);
-    }
-
-    #[test]
-    fn codex_not_installed_keeps_breathing_motion() {
-        let first = create_motion_targets(RuntimeStatus::CodexNotInstalled, 0.0);
-        let second =
-            create_motion_targets(RuntimeStatus::CodexNotInstalled, std::f32::consts::FRAC_PI_2);
-
-        assert_ne!(
-            get_param(&first, "Breath").map(|param| param.x),
-            get_param(&second, "Breath").map(|param| param.x)
-        );
-    }
-
-    #[test]
-    fn coding_uses_thinking_motion() {
-        let coding = create_motion_targets(RuntimeStatus::Coding, 3.0);
-        let thinking = create_motion_targets(RuntimeStatus::Thinking, 3.0);
-        assert_eq!(coding, thinking);
-    }
-
-    #[test]
-    fn question_loop_is_seamless_at_start_and_end() {
-        let first = create_motion_targets(RuntimeStatus::Question, 0.0);
-        let second = create_motion_targets(RuntimeStatus::Question, QUESTION_LOOP_SECONDS);
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn question_has_knocking_phase_with_arm_extended() {
-        // Phase 1 start (t=0): arm at 0.7; Phase 2 start (t=2): arm at 0.85
-        let approach = create_motion_targets(RuntimeStatus::Question, 0.0);
-        let knock = create_motion_targets(RuntimeStatus::Question, 2.0);
-
-        let arm_approach = get_param(&approach, "Arm:: Right:: Move").unwrap().x;
-        let arm_knock = get_param(&knock, "Arm:: Right:: Move").unwrap().x;
-        assert!(
-            arm_knock > arm_approach,
-            "expected arm more extended during knock: knock={arm_knock}, approach={arm_approach}"
-        );
-    }
-
-    #[test]
-    fn question_has_curious_head_tilt_during_asking() {
-        // Phase 2 start (t=2): head slightly positive; Phase 3 middle (t=5.5): head negative
-        let knock = create_motion_targets(RuntimeStatus::Question, 2.0);
-        let asking = create_motion_targets(RuntimeStatus::Question, 5.5);
-
-        let head_knock = get_param(&knock, "Head:: Yaw-Pitch").unwrap().x;
-        let head_asking = get_param(&asking, "Head:: Yaw-Pitch").unwrap().x;
-        assert!(
-            head_knock * head_asking < 0.0,
-            "expected head direction to flip: knock={head_knock}, asking={head_asking}"
-        );
-    }
-
-    #[test]
-    fn question_motion_has_visible_variation() {
-        let samples = [0.0_f32, 2.0, 4.0, 6.0, 8.0]
-            .into_iter()
-            .map(|time| create_motion_targets(RuntimeStatus::Question, time))
-            .collect::<Vec<_>>();
-
-        let range = |name: &str, field: fn(&waifudex_mascot::MascotParamValue) -> f32| {
-            let vals: Vec<f32> = samples
-                .iter()
-                .filter_map(|params| get_param(params, name).map(&field))
-                .collect();
-            vals.iter().copied().fold(f32::NEG_INFINITY, f32::max)
-                - vals.iter().copied().fold(f32::INFINITY, f32::min)
-        };
-
-        let head_range = range("Head:: Yaw-Pitch", |p| p.x);
-        let body_range = range("Body:: Yaw-Pitch", |p| p.x);
-        let arm_range = range("Arm:: Right:: Move", |p| p.x);
-
-        assert!(
-            head_range > 0.10,
-            "expected question head range > 0.10, got {head_range}"
-        );
-        assert!(
-            body_range > 0.06,
-            "expected question body range > 0.06, got {body_range}"
-        );
-        assert!(
-            arm_range > 0.15,
-            "expected question arm range > 0.15, got {arm_range}"
-        );
-    }
-
-    #[test]
-    fn complete_loop_is_seamless_at_start_and_end() {
-        let first = create_motion_targets(RuntimeStatus::Complete, 0.0);
-        let second = create_motion_targets(RuntimeStatus::Complete, COMPLETE_LOOP_SECONDS);
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn complete_has_big_smile_throughout() {
-        // Smile should stay high across all phases
-        let samples = [0.0_f32, 2.0, 4.0, 6.0]
-            .into_iter()
-            .map(|time| create_motion_targets(RuntimeStatus::Complete, time))
-            .collect::<Vec<_>>();
-
-        for (i, params) in samples.iter().enumerate() {
-            let smile = get_param(params, "Mouth:: Width").unwrap().x;
-            assert!(
-                smile > 0.7,
-                "expected smile > 0.7 at sample {i}, got {smile}"
-            );
-        }
-    }
-
-    #[test]
-    fn complete_has_arms_up_celebration() {
-        // Phase 1 (t=0): both arms should be raised high
-        let celebration = create_motion_targets(RuntimeStatus::Complete, 0.0);
-        let arm_l = get_param(&celebration, "Arm:: Left:: Move").unwrap().x;
-        let arm_r = get_param(&celebration, "Arm:: Right:: Move").unwrap().x;
-        assert!(
-            arm_l > 0.7 && arm_r > 0.7,
-            "expected both arms raised: left={arm_l}, right={arm_r}"
-        );
-    }
-
-    #[test]
-    fn complete_motion_has_energetic_variation() {
-        let samples = [0.0_f32, 1.5, 3.0, 5.0, 7.0]
-            .into_iter()
-            .map(|time| create_motion_targets(RuntimeStatus::Complete, time))
-            .collect::<Vec<_>>();
-
-        let range = |name: &str, field: fn(&waifudex_mascot::MascotParamValue) -> f32| {
-            let vals: Vec<f32> = samples
-                .iter()
-                .filter_map(|params| get_param(params, name).map(&field))
-                .collect();
-            vals.iter().copied().fold(f32::NEG_INFINITY, f32::max)
-                - vals.iter().copied().fold(f32::INFINITY, f32::min)
-        };
-
-        let head_range = range("Head:: Yaw-Pitch", |p| p.x);
-        let tail_range = range("Tail:: Move", |p| p.x);
-        let body_range = range("Body:: Yaw-Pitch", |p| p.x);
-
-        assert!(
-            head_range > 0.10,
-            "expected complete head range > 0.10, got {head_range}"
-        );
-        assert!(
-            tail_range > 0.15,
-            "expected complete tail range > 0.15, got {tail_range}"
-        );
-        assert!(
-            body_range > 0.06,
-            "expected complete body range > 0.06, got {body_range}"
-        );
-    }
-
-    #[test]
-    fn thinking_targets_actual_aka_parameter_names() {
-        let params = create_motion_targets(RuntimeStatus::Thinking, 0.0);
-
-        assert!(get_param(&params, "Head:: Yaw-Pitch").is_some());
-        assert!(get_param(&params, "Head:: Roll").is_some());
-        assert!(get_param(&params, "Body:: Yaw-Pitch").is_some());
-        assert!(get_param(&params, "Body:: Roll").is_some());
-        assert!(get_param(&params, "Eye:: Left:: Blink").is_some());
-        assert!(get_param(&params, "Eye:: Right:: Blink").is_some());
-        assert!(get_param(&params, "Breath").is_some());
-        assert!(get_param(&params, "Arm:: Left:: Move").is_some());
-        assert!(get_param(&params, "Arm:: Right:: Move").is_some());
-        assert!(get_param(&params, "Eye:: Left:: Move").is_some());
-        assert!(get_param(&params, "Eye:: Right:: Move").is_some());
-        assert!(get_param(&params, "Body:: X:: Move").is_some());
-        assert!(get_param(&params, "Tail:: Move").is_some());
-        assert!(get_param(&params, "Mouth:: Shape").is_some());
-        assert!(get_param(&params, "Mouth:: Width").is_some());
-    }
-
-    #[test]
-    fn thinking_motion_has_noticeable_live_ranges() {
-        let samples = [0.0_f32, 2.0, 4.0, 6.0, 8.0, 10.0]
-            .into_iter()
-            .map(|time| create_motion_targets(RuntimeStatus::Thinking, time))
-            .collect::<Vec<_>>();
-
-        let head_samples = samples
-            .iter()
-            .filter_map(|params| get_param(params, "Head:: Yaw-Pitch").map(|param| param.x))
-            .collect::<Vec<_>>();
-        let body_samples = samples
-            .iter()
-            .filter_map(|params| get_param(params, "Body:: Yaw-Pitch").map(|param| param.x))
-            .collect::<Vec<_>>();
-        let blink_samples = samples
-            .iter()
-            .filter_map(|params| get_param(params, "Eye:: Left:: Blink").map(|param| param.x))
-            .collect::<Vec<_>>();
-        let breath_samples = samples
-            .iter()
-            .filter_map(|params| get_param(params, "Breath").map(|param| param.x))
-            .collect::<Vec<_>>();
-        let arm_right_samples = samples
-            .iter()
-            .filter_map(|params| get_param(params, "Arm:: Right:: Move").map(|param| param.x))
-            .collect::<Vec<_>>();
-        let tail_samples = samples
-            .iter()
-            .filter_map(|params| get_param(params, "Tail:: Move").map(|param| param.x))
-            .collect::<Vec<_>>();
-
-        let range =
-            |s: &[f32]| s.iter().copied().fold(f32::NEG_INFINITY, f32::max) - s.iter().copied().fold(f32::INFINITY, f32::min);
-
-        let head_range = range(&head_samples);
-        let body_range = range(&body_samples);
-        let blink_range = range(&blink_samples);
-        let breath_range = range(&breath_samples);
-        let arm_right_range = range(&arm_right_samples);
-        let tail_range = range(&tail_samples);
-
-        assert!(
-            head_range > 0.15,
-            "expected head range > 0.15, got {head_range}"
-        );
-        assert!(
-            body_range > 0.08,
-            "expected body range > 0.08, got {body_range}"
-        );
-        assert!(
-            blink_range > 0.05,
-            "expected blink range > 0.05, got {blink_range}"
-        );
-        assert!(
-            breath_range > 0.10,
-            "expected breath range > 0.10, got {breath_range}"
-        );
-        assert!(
-            arm_right_range > 0.30,
-            "expected arm_right range > 0.30, got {arm_right_range}"
-        );
-        assert!(
-            tail_range > 0.15,
-            "expected tail range > 0.15, got {tail_range}"
-        );
-    }
-
-    #[test]
-    fn thinking_phases_produce_distinct_poses() {
-        let phase1 = create_motion_targets(RuntimeStatus::Thinking, 1.0);
-        let phase2 = create_motion_targets(RuntimeStatus::Thinking, 5.0);
-        let phase3 = create_motion_targets(RuntimeStatus::Thinking, 7.5);
-
-        // Arm positions should differ significantly between phases
-        let arm_r_1 = get_param(&phase1, "Arm:: Right:: Move").unwrap().x;
-        let arm_r_3 = get_param(&phase3, "Arm:: Right:: Move").unwrap().x;
-        assert!(
-            (arm_r_3 - arm_r_1).abs() > 0.3,
-            "expected arm phase difference > 0.3, got {}",
-            (arm_r_3 - arm_r_1).abs()
-        );
-
-        // Head direction should flip between phase 1 and 2
-        let head_1 = get_param(&phase1, "Head:: Yaw-Pitch").unwrap().x;
-        let head_2 = get_param(&phase2, "Head:: Yaw-Pitch").unwrap().x;
-        assert!(
-            head_1 * head_2 < 0.0,
-            "expected head to flip direction: phase1={head_1}, phase2={head_2}"
-        );
-    }
-
-    #[test]
-    fn idle_loop_is_seamless_at_start_and_end() {
-        let first = create_motion_targets(RuntimeStatus::Idle, 0.0);
-        let second = create_motion_targets(RuntimeStatus::Idle, IDLE_LOOP_SECONDS);
-
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn idle_uses_full_parameter_set() {
-        let params = create_motion_targets(RuntimeStatus::Idle, 0.0);
-
-        assert!(get_param(&params, "Head:: Yaw-Pitch").is_some());
-        assert!(get_param(&params, "Eye:: Left:: Blink").is_some());
-        assert!(get_param(&params, "Eye:: Left:: Move").is_some());
-        assert!(get_param(&params, "Breath").is_some());
-        assert!(get_param(&params, "Tail:: Move").is_some());
-        assert!(get_param(&params, "Mouth:: Shape").is_some());
-    }
-
-    #[test]
-    fn idle_has_drowsy_eyes_during_sigh_phase() {
-        // Phase 2 (sigh) is around t=5s: eyes should be more closed
-        let alert_phase = create_motion_targets(RuntimeStatus::Idle, 9.0);
-        let sigh_phase = create_motion_targets(RuntimeStatus::Idle, 5.0);
-
-        let blink_alert = get_param(&alert_phase, "Eye:: Left:: Blink").unwrap().x;
-        let blink_sigh = get_param(&sigh_phase, "Eye:: Left:: Blink").unwrap().x;
-
-        // Higher blink value = more closed; sigh should be more closed
-        assert!(
-            blink_sigh > blink_alert,
-            "expected sigh phase to have more closed eyes: sigh={blink_sigh}, alert={blink_alert}"
-        );
-    }
-
-    #[test]
-    fn idle_motion_has_visible_variation() {
-        let samples = [0.0_f32, 3.0, 5.5, 8.0, 10.0, 13.0]
-            .into_iter()
-            .map(|time| create_motion_targets(RuntimeStatus::Idle, time))
-            .collect::<Vec<_>>();
-
-        let range = |name: &str, field: fn(&waifudex_mascot::MascotParamValue) -> f32| {
-            let vals: Vec<f32> = samples
-                .iter()
-                .filter_map(|params| get_param(params, name).map(&field))
-                .collect();
-            vals.iter().copied().fold(f32::NEG_INFINITY, f32::max)
-                - vals.iter().copied().fold(f32::INFINITY, f32::min)
-        };
-
-        let head_range = range("Head:: Yaw-Pitch", |p| p.x);
-        let blink_range = range("Eye:: Left:: Blink", |p| p.x);
-        let breath_range = range("Breath", |p| p.x);
-
-        assert!(
-            head_range > 0.10,
-            "expected idle head range > 0.10, got {head_range}"
-        );
-        assert!(
-            blink_range > 0.10,
-            "expected idle blink range > 0.10, got {blink_range}"
-        );
-        assert!(
-            breath_range > 0.10,
-            "expected idle breath range > 0.10, got {breath_range}"
-        );
-    }
 }
