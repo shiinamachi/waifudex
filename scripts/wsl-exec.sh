@@ -5,6 +5,28 @@
 child_pid=""
 child_uses_process_group=0
 cleanup_ran=0
+child_image_name=""
+
+derive_child_image_name() {
+  if [ "$#" -eq 0 ]; then
+    return
+  fi
+
+  candidate="$(basename -- "$1")"
+  case "$candidate" in
+    *.exe) child_image_name="$candidate" ;;
+  esac
+}
+
+kill_windows_image() {
+  if [ -z "$child_image_name" ]; then
+    return
+  fi
+
+  if command -v taskkill.exe >/dev/null 2>&1; then
+    taskkill.exe /IM "$child_image_name" /T /F >/dev/null 2>&1 || true
+  fi
+}
 
 cleanup_child() {
   if [ "$cleanup_ran" -eq 1 ]; then
@@ -23,12 +45,10 @@ cleanup_child() {
       kill -TERM "$child_pid" 2>/dev/null || true
     fi
 
-    if command -v taskkill.exe >/dev/null 2>&1; then
-      taskkill.exe //PID "$child_pid" //T //F >/dev/null 2>&1 || true
-    fi
-
     wait "$child_pid" 2>/dev/null || true
   fi
+
+  kill_windows_image
 }
 
 exit_after_cleanup() {
@@ -41,6 +61,9 @@ exit_after_cleanup() {
 trap 'exit_after_cleanup 130' INT
 trap 'exit_after_cleanup 143' TERM
 trap 'cleanup_child' EXIT
+
+derive_child_image_name "$@"
+kill_windows_image
 
 if command -v setsid >/dev/null 2>&1; then
   setsid "$@" &

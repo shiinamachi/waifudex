@@ -287,14 +287,6 @@ pub fn start_monitor(app: AppHandle) {
                     let _ = mascot.set_status(status);
                 }
 
-                #[cfg(windows)]
-                if let Some(mascot_window) =
-                    app.try_state::<crate::mascot_window::MascotWindowState>()
-                {
-                    mascot_window.show();
-                    continue;
-                }
-
                 let window_state = app.state::<crate::window::WindowVisibilityState>();
                 if let Ok(visible) = crate::window::is_main_window_visible(&app) {
                     window_state.sync_visible(visible);
