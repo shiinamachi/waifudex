@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main Waifudex window",
-  "windows": ["main"],
+  "description": "Capability for the Waifudex settings webview window",
+  "windows": ["settings"],
   "permissions": [
     "core:default"
   ]

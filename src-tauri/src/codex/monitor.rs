@@ -286,21 +286,6 @@ pub fn start_monitor(app: AppHandle) {
                 if let Some(mascot) = app.try_state::<crate::mascot::MascotManager>() {
                     let _ = mascot.set_status(status);
                 }
-
-                let window_state = app.state::<crate::window::WindowVisibilityState>();
-                if let Ok(visible) = crate::window::is_main_window_visible(&app) {
-                    window_state.sync_visible(visible);
-                }
-
-                match window_state.on_status(status) {
-                    crate::window::WindowCommand::Show => {
-                        let _ = crate::window::show_main_window(&app);
-                    }
-                    crate::window::WindowCommand::Hide => {
-                        let _ = crate::window::hide_main_window(&app);
-                    }
-                    crate::window::WindowCommand::Noop => {}
-                }
             }
         }
     });

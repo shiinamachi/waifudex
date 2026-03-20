@@ -3,9 +3,9 @@ use std::sync::Mutex;
 use crate::codex::StatusKind;
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
-const MAIN_WINDOW_LABEL: &str = "main";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 const SETTINGS_WINDOW_TITLE: &str = "Settings";
+const SETTINGS_WINDOW_ENTRY: &str = "index.html";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SettingsWindowAction {
@@ -22,8 +22,6 @@ pub enum WindowCommand {
 
 #[derive(Debug, Clone)]
 pub struct WindowVisibilityPolicy {
-    grace_polls: u8,
-    idle_polls: u8,
     manual_open: bool,
     manual_hidden: bool,
     visible: bool,
@@ -34,10 +32,8 @@ pub struct WindowVisibilityState {
 }
 
 impl WindowVisibilityPolicy {
-    pub fn new(grace_polls: u8) -> Self {
+    pub fn new(_grace_polls: u8) -> Self {
         Self {
-            grace_polls,
-            idle_polls: 0,
             manual_open: false,
             manual_hidden: false,
             visible: true,
@@ -58,7 +54,6 @@ impl WindowVisibilityPolicy {
     }
 
     pub fn mark_manual_open(&mut self) -> WindowCommand {
-        self.idle_polls = 0;
         self.manual_open = true;
         self.manual_hidden = false;
 
@@ -71,7 +66,6 @@ impl WindowVisibilityPolicy {
     }
 
     pub fn mark_manual_close(&mut self) -> WindowCommand {
-        self.idle_polls = 0;
         self.manual_open = false;
         self.manual_hidden = true;
 
@@ -83,48 +77,9 @@ impl WindowVisibilityPolicy {
         }
     }
 
-    pub fn on_status(&mut self, status: StatusKind) -> WindowCommand {
-        if self.manual_hidden {
-            self.idle_polls = 0;
-
-            if self.visible {
-                self.visible = false;
-                return WindowCommand::Hide;
-            }
-
-            return WindowCommand::Noop;
-        }
-
-        match status {
-            StatusKind::Idle => {
-                if self.manual_open {
-                    self.idle_polls = 0;
-                    return WindowCommand::Noop;
-                }
-
-                self.idle_polls = self.idle_polls.saturating_add(1);
-
-                if self.visible && self.idle_polls >= self.grace_polls {
-                    self.visible = false;
-                    WindowCommand::Hide
-                } else {
-                    WindowCommand::Noop
-                }
-            }
-            StatusKind::CodexNotInstalled
-            | StatusKind::Thinking
-            | StatusKind::Coding
-            | StatusKind::Question
-            | StatusKind::Complete => {
-                self.idle_polls = 0;
-                if self.visible {
-                    WindowCommand::Noop
-                } else {
-                    self.visible = true;
-                    WindowCommand::Show
-                }
-            }
-        }
+    pub fn on_status(&mut self, _status: StatusKind) -> WindowCommand {
+        // Character visibility is manual-only; status changes never show or hide the window.
+        WindowCommand::Noop
     }
 }
 
@@ -164,14 +119,6 @@ impl WindowVisibilityState {
     }
 }
 
-pub fn configure_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    if should_show_main_window_on_setup() {
-        show_main_window(app)?;
-    }
-
-    Ok(())
-}
-
 pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     match settings_window_action(app.get_webview_window(SETTINGS_WINDOW_LABEL).is_some()) {
         SettingsWindowAction::ShowExisting => {
@@ -186,11 +133,7 @@ pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()>
                 let builder = WebviewWindowBuilder::new(
                     &app_handle,
                     SETTINGS_WINDOW_LABEL,
-                    WebviewUrl::External(
-                        "about:blank"
-                            .parse()
-                            .expect("hardcoded about:blank URL must parse"),
-                    ),
+                    settings_window_url(),
                 )
                 .title(SETTINGS_WINDOW_TITLE)
                 .inner_size(640.0, 480.0)
@@ -207,22 +150,16 @@ pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()>
     Ok(())
 }
 
-pub fn is_main_window_visible<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<bool> {
+pub fn is_character_window_visible<R: Runtime>(_app: &AppHandle<R>) -> tauri::Result<bool> {
     #[cfg(windows)]
-    if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
+    if let Some(state) = _app.try_state::<crate::mascot_window::MascotWindowState>() {
         return Ok(state.is_visible());
-    }
-
-    if should_use_main_webview() {
-        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-            return window.is_visible();
-        }
     }
 
     Ok(false)
 }
 
-pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+pub fn show_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     #[cfg(windows)]
     if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
         state.show();
@@ -233,13 +170,6 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         return Ok(());
     }
 
-    if should_use_main_webview() {
-        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-            window.show()?;
-            let _ = window.set_focus();
-        }
-    }
-
     if let Some(window_state) = app.try_state::<WindowVisibilityState>() {
         window_state.sync_visible(true);
     }
@@ -248,7 +178,7 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+pub fn hide_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     #[cfg(windows)]
     if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
         state.hide();
@@ -259,26 +189,12 @@ pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         return Ok(());
     }
 
-    if should_use_main_webview() {
-        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-            window.hide()?;
-        }
-    }
-
     if let Some(window_state) = app.try_state::<WindowVisibilityState>() {
         window_state.sync_visible(false);
     }
     let _ = crate::tray::sync_character_toggle_menu_item(app);
 
     Ok(())
-}
-
-fn should_show_main_window_on_setup() -> bool {
-    true
-}
-
-fn should_use_main_webview() -> bool {
-    false
 }
 
 fn settings_window_action(window_exists: bool) -> SettingsWindowAction {
@@ -289,8 +205,12 @@ fn settings_window_action(window_exists: bool) -> SettingsWindowAction {
     }
 }
 
-pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let visible = is_main_window_visible(app)?;
+fn settings_window_url() -> WebviewUrl {
+    WebviewUrl::App(SETTINGS_WINDOW_ENTRY.into())
+}
+
+pub fn toggle_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    let visible = is_character_window_visible(app)?;
 
     if let Some(window_state) = app.try_state::<WindowVisibilityState>() {
         window_state.sync_visible(visible);
@@ -300,14 +220,14 @@ pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         } else {
             window_state.mark_manual_open()
         } {
-            WindowCommand::Show => show_main_window(app)?,
-            WindowCommand::Hide => hide_main_window(app)?,
+            WindowCommand::Show => show_character_window(app)?,
+            WindowCommand::Hide => hide_character_window(app)?,
             WindowCommand::Noop => {}
         }
     } else if visible {
-        hide_main_window(app)?;
+        hide_character_window(app)?;
     } else {
-        show_main_window(app)?;
+        show_character_window(app)?;
     }
 
     Ok(())
@@ -319,8 +239,26 @@ mod tests {
     use crate::codex::StatusKind;
 
     #[test]
-    fn main_window_is_shown_during_setup() {
-        assert!(should_show_main_window_on_setup());
+    fn window_visibility_policy_starts_visible() {
+        assert!(WindowVisibilityPolicy::new(2).is_visible());
+    }
+
+    #[test]
+    fn status_changes_do_not_auto_show_hidden_window() {
+        let mut policy = WindowVisibilityPolicy::new(2);
+        policy.sync_visible(false);
+
+        assert_eq!(policy.on_status(StatusKind::Thinking), WindowCommand::Noop);
+        assert!(!policy.is_visible());
+    }
+
+    #[test]
+    fn status_changes_do_not_auto_hide_visible_window() {
+        let mut policy = WindowVisibilityPolicy::new(2);
+
+        assert_eq!(policy.on_status(StatusKind::Idle), WindowCommand::Noop);
+        assert_eq!(policy.on_status(StatusKind::Idle), WindowCommand::Noop);
+        assert!(policy.is_visible());
     }
 
     #[test]
@@ -336,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn manual_hide_blocks_automatic_show_until_manual_open() {
+    fn manual_hide_requires_manual_reopen() {
         let mut policy = WindowVisibilityPolicy::new(2);
 
         assert_eq!(policy.mark_manual_close(), WindowCommand::Hide);
@@ -345,5 +283,13 @@ mod tests {
         assert!(!policy.is_visible());
         assert_eq!(policy.mark_manual_open(), WindowCommand::Show);
         assert!(policy.is_visible());
+    }
+
+    #[test]
+    fn settings_window_uses_app_assets() {
+        match settings_window_url() {
+            WebviewUrl::App(path) => assert_eq!(path.to_string_lossy(), "index.html"),
+            other => panic!("expected app asset URL, got {other:?}"),
+        }
     }
 }

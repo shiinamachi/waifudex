@@ -25,7 +25,7 @@ pub fn run() {
             app_settings::initialize(&app_handle)?;
             mascot_window::initialize(&app_handle)?;
             let _ = mascot::initialize_default_mascot(&app_handle);
-            window::configure_main_window(&app_handle)?;
+            window::show_character_window(&app_handle)?;
             tray::build_tray(&app_handle)?;
             codex::start_monitor(app_handle);
 

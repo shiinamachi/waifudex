@@ -37,7 +37,7 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let character_visibility_item = MenuItem::with_id(
         app,
         CHARACTER_VISIBILITY_ID,
-        character_toggle_label(crate::window::is_main_window_visible(app).unwrap_or(true)),
+        character_toggle_label(crate::window::is_character_window_visible(app).unwrap_or(true)),
         true,
         None::<&str>,
     )?;
@@ -74,7 +74,7 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     tray.show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             CHARACTER_VISIBILITY_ID => {
-                if let Err(error) = crate::window::toggle_main_window(app) {
+                if let Err(error) = crate::window::toggle_character_window(app) {
                     eprintln!("failed to toggle character visibility: {error}");
                 }
 
@@ -118,7 +118,7 @@ pub fn sync_always_on_top_menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Re
 
 pub fn sync_character_toggle_menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(state) = app.try_state::<TraySettingsState<R>>() {
-        state.sync_character_visibility(crate::window::is_main_window_visible(app)?)?;
+        state.sync_character_visibility(crate::window::is_character_window_visible(app)?)?;
     }
 
     Ok(())
