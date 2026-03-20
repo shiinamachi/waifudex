@@ -4,6 +4,7 @@
   "description": "Capability for the Waifudex settings webview window",
   "windows": ["settings"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-current-monitor"
   ]
 }
