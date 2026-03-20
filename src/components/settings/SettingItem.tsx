@@ -5,10 +5,9 @@ import {
   CardHeader,
   Switch,
 } from "@fluentui/react-components";
+import type { ReactNode } from "react";
 
 import { winUiSwitch } from "./setting-item.css";
-
-type SettingItemType = "switch";
 
 interface BaseSettingItemProps {
   title: string;
@@ -19,12 +18,20 @@ interface SwitchSettingItemProps extends BaseSettingItemProps {
   type: "switch";
   value: boolean;
   onChange: (newValue: boolean) => void;
+  children?: never;
 }
 
-type SettingItemProps = SwitchSettingItemProps;
+interface CustomSettingItemProps extends BaseSettingItemProps {
+  type?: never;
+  value?: never;
+  onChange?: never;
+  children: ReactNode;
+}
+
+type SettingItemProps = SwitchSettingItemProps | CustomSettingItemProps;
 
 type SettingActionItemProps = Pick<
-  SettingItemProps,
+  SwitchSettingItemProps,
   "type" | "value" | "onChange"
 >;
 
@@ -42,22 +49,25 @@ function SettingActionItem({ type, value, onChange }: SettingActionItemProps) {
   return null;
 }
 
-export default function SettingItem({
-  title,
-  description,
-  type,
-  value,
-  onChange,
-}: SettingItemProps) {
+export default function SettingItem(props: SettingItemProps) {
+  const { title, description } = props;
+
   return (
     <Card appearance="filled">
       <CardHeader
         header={<Body1>{title}</Body1>}
         description={<Caption1>{description}</Caption1>}
         action={
-          <SettingActionItem type={type} value={value} onChange={onChange} />
+          props.type === "switch" ? (
+            <SettingActionItem
+              type={props.type}
+              value={props.value}
+              onChange={props.onChange}
+            />
+          ) : undefined
         }
       />
+      {!props.type && props.children}
     </Card>
   );
 }
