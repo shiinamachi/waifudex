@@ -13,7 +13,7 @@
         "check": "svelte-check --tsconfig ./tsconfig.json",
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
-        "tauri:dev:windows": "pnpm inochi2d:build:windows && CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER=../scripts/wsl-exec.sh tauri dev --runner cargo-xwin --target x86_64-pc-windows-msvc",
+        "tauri:dev:windows": "./scripts/tauri-dev-windows.sh",
         "tauri:build": "tauri build",
         "tauri:build:windows": "pnpm inochi2d:build:windows && pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle"
     },

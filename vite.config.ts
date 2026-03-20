@@ -1,13 +1,25 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
+const tauriDevHost = process.env.TAURI_DEV_HOST;
+
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
   server: {
-    host: "0.0.0.0",
+    host: tauriDevHost || "0.0.0.0",
     port: 1420,
     strictPort: true,
+    hmr: tauriDevHost
+      ? {
+          protocol: "ws",
+          host: tauriDevHost,
+          port: 1421,
+        }
+      : undefined,
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
   },
   preview: {
     host: "0.0.0.0",
