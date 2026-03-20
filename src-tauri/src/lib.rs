@@ -17,7 +17,9 @@ pub fn run() {
         .manage(runtime_state::RuntimeState::new())
         .manage(window::WindowVisibilityState::new(2))
         .invoke_handler(tauri::generate_handler![
-            runtime_state::get_runtime_bootstrap
+            runtime_state::get_runtime_bootstrap,
+            app_settings::get_app_settings,
+            app_settings::update_app_settings_command
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

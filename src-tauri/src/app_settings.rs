@@ -5,9 +5,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
+pub const APP_SETTINGS_CHANGED_EVENT: &str = "waifudex://app-settings-changed";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -95,6 +96,10 @@ impl AppSettingsState {
     }
 }
 
+fn app_settings_changed_payload(settings: &AppSettings) -> AppSettings {
+    settings.clone()
+}
+
 pub fn initialize<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let path = app_settings_path(app)?;
     let settings = load_app_settings_from_path(&path);
@@ -130,7 +135,25 @@ pub fn update_app_settings<R: Runtime>(
     }
 
     state.replace(path, next.clone());
+    let _ = crate::tray::sync_always_on_top_menu_item(app);
+    let _ = app.emit(
+        APP_SETTINGS_CHANGED_EVENT,
+        app_settings_changed_payload(&next),
+    );
     Ok(next)
+}
+
+#[tauri::command]
+pub fn get_app_settings(app: AppHandle) -> AppSettings {
+    current_app_settings(&app)
+}
+
+#[tauri::command]
+pub fn update_app_settings_command(
+    app: AppHandle,
+    update: AppSettingsUpdate,
+) -> Result<AppSettings, String> {
+    update_app_settings(&app, update).map_err(|error| error.to_string())
 }
 
 fn app_settings_path<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<PathBuf> {
@@ -184,5 +207,27 @@ mod tests {
     fn invalid_settings_json_falls_back_to_defaults() {
         let settings = parse_app_settings_json("{invalid json");
         assert_eq!(settings, AppSettings::default());
+    }
+
+    #[test]
+    fn app_settings_changed_event_name_is_stable() {
+        assert_eq!(
+            APP_SETTINGS_CHANGED_EVENT,
+            "waifudex://app-settings-changed"
+        );
+    }
+
+    #[test]
+    fn app_settings_change_payload_serializes_camel_case_always_on_top() {
+        let payload = app_settings_changed_payload(&AppSettings {
+            always_on_top: false,
+        });
+
+        assert_eq!(
+            serde_json::to_value(payload).unwrap(),
+            serde_json::json!({
+                "alwaysOnTop": false,
+            })
+        );
     }
 }

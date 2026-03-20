@@ -9,6 +9,7 @@ import {
 
 import CommonLayout from "../../components/layouts/CommonLayout";
 import { layout, panel, tabList } from "./index.css";
+import SettingsGeneralTab from "./tabs/SettingsGeneralTab";
 
 const DEFAULT_TAB: TabValue = "general";
 
@@ -33,7 +34,7 @@ export default function Settings() {
         </TabList>
 
         <div className={panel}>
-          {selectedTab === "general" && "General Settings"}
+          {selectedTab === "general" && <SettingsGeneralTab />}
         </div>
       </div>
     </CommonLayout>
