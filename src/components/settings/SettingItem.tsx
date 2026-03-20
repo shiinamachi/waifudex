@@ -51,21 +51,21 @@ function SettingActionItem({ type, value, onChange }: SettingActionItemProps) {
 
 export default function SettingItem(props: SettingItemProps) {
   const { title, description } = props;
+  const action =
+    props.type === "switch" ? (
+      <SettingActionItem
+        type={props.type}
+        value={props.value}
+        onChange={props.onChange}
+      />
+    ) : null;
 
   return (
     <Card appearance="filled">
       <CardHeader
         header={<Body1>{title}</Body1>}
         description={<Caption1>{description}</Caption1>}
-        action={
-          props.type === "switch" ? (
-            <SettingActionItem
-              type={props.type}
-              value={props.value}
-              onChange={props.onChange}
-            />
-          ) : undefined
-        }
+        action={action}
       />
       {!props.type && props.children}
     </Card>
