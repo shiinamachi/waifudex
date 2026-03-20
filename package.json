@@ -18,8 +18,11 @@
         "tauri:build:windows": "pnpm inochi2d:build:windows && pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle"
     },
     "dependencies": {
+        "@fluentui/tokens": "1.0.0-alpha.23",
+        "@fluentui/web-components": "2.6.1",
         "@tauri-apps/api": "2.10.1",
-        "svelte": "5.53.12"
+        "svelte": "5.53.12",
+        "the-new-css-reset": "1.11.3"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "7.0.0",

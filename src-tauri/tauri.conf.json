@@ -1,28 +1,23 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Waifudex",
-  "version": "0.1.0",
-  "identifier": "com.kentakang.waifudex",
-  "build": {
-    "beforeDevCommand": "pnpm dev -- --host 0.0.0.0 --port 1420",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "security": {
-      "csp": null
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "waifudex",
+    "version": "0.1.0",
+    "identifier": "com.kentakang.waifudex",
+    "build": {
+        "beforeDevCommand": "pnpm dev -- --host 0.0.0.0 --port 1420",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "pnpm build",
+        "frontendDist": "../dist"
+    },
+    "app": {
+        "security": {
+            "csp": null
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "resources": ["../third_party/inochi2d-c/out/libinochi2d-c.so"],
+        "icon": ["icons/icon.png", "icons/icon.ico"]
     }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "resources": [
-      "../third_party/inochi2d-c/out/libinochi2d-c.so"
-    ],
-    "icon": [
-      "icons/icon.png",
-      "icons/icon.ico"
-    ]
-  }
 }
