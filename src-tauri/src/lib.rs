@@ -1,3 +1,4 @@
+pub mod app_settings;
 pub mod codex;
 pub mod contracts;
 pub mod mascot;
@@ -10,6 +11,7 @@ pub mod window;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(app_settings::AppSettingsState::new())
         .manage(mascot::MascotManager::new())
         .manage(mascot_window::MascotWindowState::new())
         .manage(runtime_state::RuntimeState::new())
@@ -20,6 +22,7 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            app_settings::initialize(&app_handle)?;
             mascot_window::initialize(&app_handle)?;
             let _ = mascot::initialize_default_mascot(&app_handle);
             window::configure_main_window(&app_handle)?;

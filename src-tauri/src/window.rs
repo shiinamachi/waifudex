@@ -1,7 +1,17 @@
 use std::sync::Mutex;
 
 use crate::codex::StatusKind;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
+
+const MAIN_WINDOW_LABEL: &str = "main";
+const SETTINGS_WINDOW_LABEL: &str = "settings";
+const SETTINGS_WINDOW_TITLE: &str = "Settings";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SettingsWindowAction {
+    ShowExisting,
+    CreateNew,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowCommand {
@@ -138,13 +148,47 @@ impl WindowVisibilityState {
 }
 
 pub fn configure_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    // On Windows the native mascot window is used instead of the Tauri webview,
-    // so the main window stays hidden. On other platforms, show it now that
-    // setup is complete (the window starts with visible:false in tauri.conf.json
-    // to avoid a brief flash of a transparent frame on startup).
-    #[cfg(not(windows))]
-    if let Some(window) = app.get_webview_window("main") {
-        window.show()?;
+    if should_show_main_window_on_setup() {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            window.show()?;
+        }
+    }
+
+    let _ = app;
+
+    Ok(())
+}
+
+pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    match settings_window_action(app.get_webview_window(SETTINGS_WINDOW_LABEL).is_some()) {
+        SettingsWindowAction::ShowExisting => {
+            if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
+                window.show()?;
+                let _ = window.set_focus();
+            }
+        }
+        SettingsWindowAction::CreateNew => {
+            let app_handle = app.clone();
+            std::thread::spawn(move || {
+                let builder = WebviewWindowBuilder::new(
+                    &app_handle,
+                    SETTINGS_WINDOW_LABEL,
+                    WebviewUrl::External(
+                        "about:blank"
+                            .parse()
+                            .expect("hardcoded about:blank URL must parse"),
+                    ),
+                )
+                .title(SETTINGS_WINDOW_TITLE)
+                .inner_size(640.0, 480.0)
+                .resizable(true)
+                .focused(true);
+
+                if let Err(error) = builder.build() {
+                    eprintln!("failed to create settings window: {error}");
+                }
+            });
+        }
     }
 
     Ok(())
@@ -156,8 +200,10 @@ pub fn is_main_window_visible<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<b
         return Ok(state.is_visible());
     }
 
-    if let Some(window) = app.get_webview_window("main") {
-        return window.is_visible();
+    if should_use_main_webview() {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            return window.is_visible();
+        }
     }
 
     Ok(false)
@@ -167,16 +213,15 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     #[cfg(windows)]
     if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
         state.show();
-        let _ = crate::tray::sync_window_action_label(app);
         return Ok(());
     }
 
-    if let Some(window) = app.get_webview_window("main") {
-        window.show()?;
-        let _ = window.set_focus();
+    if should_use_main_webview() {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            window.show()?;
+            let _ = window.set_focus();
+        }
     }
-
-    let _ = crate::tray::sync_window_action_label(app);
 
     Ok(())
 }
@@ -185,17 +230,32 @@ pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     #[cfg(windows)]
     if let Some(state) = app.try_state::<crate::mascot_window::MascotWindowState>() {
         state.hide();
-        let _ = crate::tray::sync_window_action_label(app);
         return Ok(());
     }
 
-    if let Some(window) = app.get_webview_window("main") {
-        window.hide()?;
+    if should_use_main_webview() {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            window.hide()?;
+        }
     }
 
-    let _ = crate::tray::sync_window_action_label(app);
-
     Ok(())
+}
+
+fn should_show_main_window_on_setup() -> bool {
+    false
+}
+
+fn should_use_main_webview() -> bool {
+    false
+}
+
+fn settings_window_action(window_exists: bool) -> SettingsWindowAction {
+    if window_exists {
+        SettingsWindowAction::ShowExisting
+    } else {
+        SettingsWindowAction::CreateNew
+    }
 }
 
 pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
@@ -211,9 +271,7 @@ pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         } {
             WindowCommand::Show => show_main_window(app)?,
             WindowCommand::Hide => hide_main_window(app)?,
-            WindowCommand::Noop => {
-                let _ = crate::tray::sync_window_action_label(app);
-            }
+            WindowCommand::Noop => {}
         }
     } else if visible {
         hide_main_window(app)?;
@@ -222,4 +280,26 @@ pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn main_window_stays_hidden_during_setup() {
+        assert!(!should_show_main_window_on_setup());
+    }
+
+    #[test]
+    fn reuses_existing_settings_window_before_creating_one() {
+        assert_eq!(
+            settings_window_action(true),
+            SettingsWindowAction::ShowExisting
+        );
+        assert_eq!(
+            settings_window_action(false),
+            SettingsWindowAction::CreateNew
+        );
+    }
 }

@@ -22,6 +22,7 @@ struct NativeMascotWindow {
 #[derive(Debug)]
 pub struct MascotWindowState {
     visible: Mutex<bool>,
+    always_on_top: Mutex<bool>,
     #[cfg(windows)]
     window: Mutex<Option<NativeMascotWindow>>,
     size: Mutex<MascotWindowSize>,
@@ -31,6 +32,7 @@ impl MascotWindowState {
     pub fn new() -> Self {
         Self {
             visible: Mutex::new(false),
+            always_on_top: Mutex::new(true),
             #[cfg(windows)]
             window: Mutex::new(None),
             size: Mutex::new(MascotWindowSize {
@@ -76,6 +78,35 @@ impl MascotWindowState {
             .visible
             .lock()
             .expect("mascot window state mutex poisoned")
+    }
+
+    pub fn is_always_on_top(&self) -> bool {
+        *self
+            .always_on_top
+            .lock()
+            .expect("mascot window state mutex poisoned")
+    }
+
+    pub fn set_always_on_top(&self, always_on_top: bool) -> tauri::Result<()> {
+        *self
+            .always_on_top
+            .lock()
+            .expect("mascot window state mutex poisoned") = always_on_top;
+
+        #[cfg(windows)]
+        if let Some(window) = *self
+            .window
+            .lock()
+            .expect("mascot window state mutex poisoned")
+        {
+            apply_window_topmost(
+                window.hwnd as windows_sys::Win32::Foundation::HWND,
+                always_on_top,
+            )
+            .map_err(tauri::Error::from)?;
+        }
+
+        Ok(())
     }
 
     pub fn resize(&self, width: u32, height: u32) -> tauri::Result<()> {
@@ -171,8 +202,12 @@ pub fn initialize<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     #[cfg(windows)]
     {
         let size = state.size();
-        let hwnd = create_layered_mascot_window(size.width as i32, size.height as i32)
-            .map_err(tauri::Error::from)?;
+        let hwnd = create_layered_mascot_window(
+            size.width as i32,
+            size.height as i32,
+            state.is_always_on_top(),
+        )
+        .map_err(tauri::Error::from)?;
         state.attach(NativeMascotWindow {
             hwnd: hwnd as isize,
         });
@@ -181,6 +216,14 @@ pub fn initialize<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     #[cfg(not(windows))]
     {
         let _ = app;
+    }
+
+    Ok(())
+}
+
+pub fn set_always_on_top<R: Runtime>(app: &AppHandle<R>, always_on_top: bool) -> tauri::Result<()> {
+    if let Some(state) = app.try_state::<MascotWindowState>() {
+        state.set_always_on_top(always_on_top)?;
     }
 
     Ok(())
@@ -217,10 +260,29 @@ pub fn present_frame<R: Runtime>(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mascot_window_state_defaults_to_always_on_top() {
+        let state = MascotWindowState::new();
+        assert!(state.is_always_on_top());
+    }
+
+    #[test]
+    fn mascot_window_state_updates_always_on_top_flag() {
+        let state = MascotWindowState::new();
+        state.set_always_on_top(false).unwrap();
+        assert!(!state.is_always_on_top());
+    }
+}
+
 #[cfg(windows)]
 fn create_layered_mascot_window(
     width: i32,
     height: i32,
+    always_on_top: bool,
 ) -> io::Result<windows_sys::Win32::Foundation::HWND> {
     use windows_sys::Win32::{
         Foundation::HWND,
@@ -248,8 +310,13 @@ fn create_layered_mascot_window(
 
         let _ = RegisterClassA(&class);
 
+        let mut extended_style = WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+        if always_on_top {
+            extended_style |= WS_EX_TOPMOST;
+        }
+
         let hwnd: HWND = CreateWindowExA(
-            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+            extended_style,
             WINDOW_CLASS.as_ptr(),
             WINDOW_CLASS.as_ptr(),
             WS_POPUP,
@@ -269,6 +336,39 @@ fn create_layered_mascot_window(
 
         Ok(hwnd)
     }
+}
+
+#[cfg(windows)]
+fn apply_window_topmost(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    always_on_top: bool,
+) -> io::Result<()> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    let insert_after = if always_on_top {
+        HWND_TOPMOST
+    } else {
+        HWND_NOTOPMOST
+    };
+    let result = unsafe {
+        SetWindowPos(
+            hwnd,
+            insert_after,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+    };
+
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
 }
 
 #[cfg(windows)]
