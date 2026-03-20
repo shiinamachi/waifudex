@@ -152,13 +152,20 @@ pub fn update_app_settings<R: Runtime>(
             let _ = crate::mascot_window::set_always_on_top(app, previous.always_on_top);
             return Err(error);
         }
-        // TODO(task2): Also call crate::mascot::resize(app, next_width, next_height) once it exists
+        if let Err(error) = crate::mascot::resize(app, next_width, next_height) {
+            let prev_width = (BASE_MASCOT_WIDTH as f64 * previous.character_scale) as u32;
+            let prev_height = (BASE_MASCOT_HEIGHT as f64 * previous.character_scale) as u32;
+            let _ = crate::mascot_window::resize(app, prev_width, prev_height);
+            let _ = crate::mascot_window::set_always_on_top(app, previous.always_on_top);
+            return Err(error);
+        }
     }
 
     if let Err(error) = persist_app_settings_to_path(&path, &next) {
         if (next.character_scale - previous.character_scale).abs() > f64::EPSILON {
             let prev_width = (BASE_MASCOT_WIDTH as f64 * previous.character_scale) as u32;
             let prev_height = (BASE_MASCOT_HEIGHT as f64 * previous.character_scale) as u32;
+            let _ = crate::mascot::resize(app, prev_width, prev_height);
             let _ = crate::mascot_window::resize(app, prev_width, prev_height);
         }
         let _ = crate::mascot_window::set_always_on_top(app, previous.always_on_top);

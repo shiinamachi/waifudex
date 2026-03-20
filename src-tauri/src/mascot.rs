@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 pub use waifudex_mascot::MascotParamValue;
 use waifudex_mascot::MascotRenderer;
 
@@ -58,19 +58,6 @@ impl MascotManager {
             }
         }
 
-        #[allow(unused_variables)]
-        let (width, height) = (width, height);
-
-        #[cfg(windows)]
-        let (width, height) = if let Some(window_state) =
-            app_handle.try_state::<crate::mascot_window::MascotWindowState>()
-        {
-            let size = window_state.size();
-            (size.width, size.height)
-        } else {
-            (width, height)
-        };
-
         let resolved_model_path = resolve_model_path(&app_handle, &model_path)
             .ok_or_else(|| format!("mascot model path could not be resolved: {model_path}"))?;
         let (sender, receiver) = mpsc::channel();
@@ -119,13 +106,6 @@ impl MascotManager {
     }
 
     pub fn resize(&self, width: u32, height: u32) -> Result<(), String> {
-        #[cfg(windows)]
-        {
-            let _ = (width, height);
-            Ok(())
-        }
-
-        #[cfg(not(windows))]
         self.with_active_mut(|active| {
             active
                 .sender
@@ -175,7 +155,15 @@ impl MascotManager {
 
 pub fn initialize_default_mascot(app_handle: &AppHandle) -> Result<Vec<String>, String> {
     let manager = app_handle.state::<MascotManager>();
-    manager.init(app_handle.clone(), "/models/Aka.inx".to_string(), 420, 720)
+    let size = app_handle.state::<crate::mascot_window::MascotWindowState>().size();
+    manager.init(app_handle.clone(), "/models/Aka.inx".to_string(), size.width, size.height)
+}
+
+pub fn resize<R: Runtime>(app: &AppHandle<R>, width: u32, height: u32) -> tauri::Result<()> {
+    let manager = app.state::<MascotManager>();
+    manager
+        .resize(width, height)
+        .map_err(|e| tauri::Error::from(std::io::Error::other(e)))
 }
 
 fn resolve_model_path(app_handle: &AppHandle, model_path: &str) -> Option<PathBuf> {
