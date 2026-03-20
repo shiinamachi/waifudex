@@ -9,9 +9,9 @@ import {
 
 import CommonLayout from "../../components/layouts/CommonLayout";
 import { layout, panel, tabList } from "./index.css";
-import SettingsGeneralTab from "./tabs/SettingsGeneralTab";
+import SettingsDisplayTab from "./tabs/SettingsDisplayTab";
 
-const DEFAULT_TAB: TabValue = "general";
+const DEFAULT_TAB: TabValue = "display";
 
 export default function Settings() {
   const [selectedTab, setSelectedTab] = useState<TabValue>(DEFAULT_TAB);
@@ -30,11 +30,11 @@ export default function Settings() {
           selectedValue={selectedTab}
           vertical
         >
-          <Tab value="general">General</Tab>
+          <Tab value="display">Display</Tab>
         </TabList>
 
         <div className={panel}>
-          {selectedTab === "general" && <SettingsGeneralTab />}
+          {selectedTab === "display" && <SettingsDisplayTab />}
         </div>
       </div>
     </CommonLayout>
