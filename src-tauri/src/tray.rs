@@ -84,6 +84,7 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let current_settings = crate::app_settings::current_app_settings(app);
                 let update = crate::app_settings::AppSettingsUpdate {
                     always_on_top: Some(!current_settings.always_on_top),
+                    ..Default::default()
                 };
 
                 if let Err(error) = crate::app_settings::update_app_settings(app, update) {

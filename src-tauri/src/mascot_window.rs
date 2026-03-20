@@ -229,6 +229,14 @@ pub fn set_always_on_top<R: Runtime>(app: &AppHandle<R>, always_on_top: bool) ->
     Ok(())
 }
 
+pub fn resize<R: Runtime>(app: &AppHandle<R>, width: u32, height: u32) -> tauri::Result<()> {
+    if let Some(state) = app.try_state::<MascotWindowState>() {
+        state.resize(width, height)?;
+    }
+
+    Ok(())
+}
+
 pub fn present_frame<R: Runtime>(
     app: &AppHandle<R>,
     width: u32,

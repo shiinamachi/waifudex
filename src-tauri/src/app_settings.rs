@@ -10,30 +10,41 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 const SETTINGS_FILE_NAME: &str = "settings.json";
 pub const APP_SETTINGS_CHANGED_EVENT: &str = "waifudex://app-settings-changed";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+const MIN_CHARACTER_SCALE: f64 = 0.5;
+const MAX_CHARACTER_SCALE: f64 = 1.5;
+pub const BASE_MASCOT_WIDTH: u32 = 420;
+pub const BASE_MASCOT_HEIGHT: u32 = 720;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AppSettings {
     pub always_on_top: bool,
+    pub character_scale: f64,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             always_on_top: true,
+            character_scale: 1.0,
         }
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AppSettingsUpdate {
     pub always_on_top: Option<bool>,
+    pub character_scale: Option<f64>,
 }
 
 impl AppSettingsUpdate {
     fn apply_to(&self, settings: &mut AppSettings) {
         if let Some(always_on_top) = self.always_on_top {
             settings.always_on_top = always_on_top;
+        }
+        if let Some(character_scale) = self.character_scale {
+            settings.character_scale = character_scale.clamp(MIN_CHARACTER_SCALE, MAX_CHARACTER_SCALE);
         }
     }
 }
@@ -106,6 +117,11 @@ pub fn initialize<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let state = app.state::<AppSettingsState>();
     state.replace(path, settings.clone());
     crate::mascot_window::set_always_on_top(app, settings.always_on_top)?;
+
+    let width = (BASE_MASCOT_WIDTH as f64 * settings.character_scale) as u32;
+    let height = (BASE_MASCOT_HEIGHT as f64 * settings.character_scale) as u32;
+    let _ = crate::mascot_window::resize(app, width, height);
+
     Ok(())
 }
 
@@ -129,7 +145,22 @@ pub fn update_app_settings<R: Runtime>(
 
     crate::mascot_window::set_always_on_top(app, next.always_on_top)?;
 
+    if (next.character_scale - previous.character_scale).abs() > f64::EPSILON {
+        let next_width = (BASE_MASCOT_WIDTH as f64 * next.character_scale) as u32;
+        let next_height = (BASE_MASCOT_HEIGHT as f64 * next.character_scale) as u32;
+        if let Err(error) = crate::mascot_window::resize(app, next_width, next_height) {
+            let _ = crate::mascot_window::set_always_on_top(app, previous.always_on_top);
+            return Err(error);
+        }
+        // TODO(task2): Also call crate::mascot::resize(app, next_width, next_height) once it exists
+    }
+
     if let Err(error) = persist_app_settings_to_path(&path, &next) {
+        if (next.character_scale - previous.character_scale).abs() > f64::EPSILON {
+            let prev_width = (BASE_MASCOT_WIDTH as f64 * previous.character_scale) as u32;
+            let prev_height = (BASE_MASCOT_HEIGHT as f64 * previous.character_scale) as u32;
+            let _ = crate::mascot_window::resize(app, prev_width, prev_height);
+        }
         let _ = crate::mascot_window::set_always_on_top(app, previous.always_on_top);
         return Err(error);
     }
@@ -186,7 +217,10 @@ fn persist_app_settings_to_path(path: &Path, settings: &AppSettings) -> tauri::R
 
 fn parse_app_settings_json(contents: &str) -> AppSettings {
     match serde_json::from_str::<AppSettings>(contents) {
-        Ok(settings) => settings,
+        Ok(mut settings) => {
+            settings.character_scale = settings.character_scale.clamp(MIN_CHARACTER_SCALE, MAX_CHARACTER_SCALE);
+            settings
+        }
         Err(error) => {
             eprintln!("failed to parse app settings JSON, using defaults: {error}");
             AppSettings::default()
@@ -204,6 +238,11 @@ mod tests {
     }
 
     #[test]
+    fn app_settings_default_character_scale_is_1() {
+        assert!((AppSettings::default().character_scale - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
     fn invalid_settings_json_falls_back_to_defaults() {
         let settings = parse_app_settings_json("{invalid json");
         assert_eq!(settings, AppSettings::default());
@@ -218,16 +257,30 @@ mod tests {
     }
 
     #[test]
-    fn app_settings_change_payload_serializes_camel_case_always_on_top() {
+    fn app_settings_change_payload_serializes_camel_case() {
         let payload = app_settings_changed_payload(&AppSettings {
             always_on_top: false,
+            character_scale: 0.8,
         });
 
         assert_eq!(
             serde_json::to_value(payload).unwrap(),
             serde_json::json!({
                 "alwaysOnTop": false,
+                "characterScale": 0.8,
             })
         );
+    }
+
+    #[test]
+    fn parse_app_settings_clamps_character_scale_max() {
+        let settings = parse_app_settings_json(r#"{"characterScale": 5.0}"#);
+        assert!((settings.character_scale - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_app_settings_clamps_character_scale_min() {
+        let settings = parse_app_settings_json(r#"{"characterScale": 0.1}"#);
+        assert!((settings.character_scale - 0.5).abs() < f64::EPSILON);
     }
 }
