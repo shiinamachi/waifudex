@@ -155,8 +155,15 @@ impl MascotManager {
 
 pub fn initialize_default_mascot(app_handle: &AppHandle) -> Result<Vec<String>, String> {
     let manager = app_handle.state::<MascotManager>();
-    let size = app_handle.state::<crate::mascot_window::MascotWindowState>().size();
-    manager.init(app_handle.clone(), "/models/Aka.inx".to_string(), size.width, size.height)
+    let size = app_handle
+        .state::<crate::mascot_window::MascotWindowState>()
+        .size();
+    manager.init(
+        app_handle.clone(),
+        "/models/Aka.inx".to_string(),
+        size.width,
+        size.height,
+    )
 }
 
 pub fn resize<R: Runtime>(app: &AppHandle<R>, width: u32, height: u32) -> tauri::Result<()> {

@@ -27,7 +27,10 @@ use windows_sys::Win32::{
     },
 };
 
-use super::{initialize_inochi2d, load_params, load_puppet, trace_stage, NativeParam};
+use super::{
+    apply_camera_for_viewport, initialize_inochi2d, load_params, load_puppet, trace_stage,
+    NativeParam,
+};
 use crate::{MascotError, MascotParamValue, ParamInfo, Result};
 
 const WINDOW_CLASS_NAME: &[u8] = b"WaifudexMascotHiddenWindow\0";
@@ -192,6 +195,7 @@ impl NativeMascotRenderer {
         unsafe {
             inViewportSet(width, height);
         }
+        apply_camera_for_viewport(width, height);
         self.dirty = true;
         Ok(())
     }

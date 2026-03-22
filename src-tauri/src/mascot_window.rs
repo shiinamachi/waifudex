@@ -1,7 +1,10 @@
 #[cfg(windows)]
 use std::io;
+#[cfg(windows)]
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+use crate::contracts::DisplayMonitorOption;
 use tauri::{AppHandle, Manager, Runtime};
 
 const MIN_WINDOW_SIZE: u32 = 180;
@@ -13,10 +16,32 @@ pub struct MascotWindowSize {
     pub height: u32,
 }
 
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MonitorWorkArea {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DisplayMonitorSnapshot {
+    option: DisplayMonitorOption,
+    work_area: MonitorWorkArea,
+    is_primary: bool,
+}
+
 #[cfg(windows)]
 #[derive(Debug, Clone, Copy)]
 struct NativeMascotWindow {
     hwnd: isize,
+}
+
+#[cfg(windows)]
+struct NativeMascotWindowContext {
+    on_monitor_changed: Box<dyn Fn(Option<String>) + Send + Sync>,
 }
 
 #[derive(Debug)]
@@ -25,6 +50,8 @@ pub struct MascotWindowState {
     always_on_top: Mutex<bool>,
     #[cfg(windows)]
     window: Mutex<Option<NativeMascotWindow>>,
+    #[cfg(windows)]
+    monitor_move_suppressed: Mutex<bool>,
     size: Mutex<MascotWindowSize>,
 }
 
@@ -35,6 +62,8 @@ impl MascotWindowState {
             always_on_top: Mutex::new(true),
             #[cfg(windows)]
             window: Mutex::new(None),
+            #[cfg(windows)]
+            monitor_move_suppressed: Mutex::new(false),
             size: Mutex::new(MascotWindowSize {
                 width: 420,
                 height: 720,
@@ -55,6 +84,22 @@ impl MascotWindowState {
             .window
             .lock()
             .expect("mascot window state mutex poisoned") = Some(window);
+    }
+
+    #[cfg(windows)]
+    fn is_monitor_move_suppressed(&self) -> bool {
+        *self
+            .monitor_move_suppressed
+            .lock()
+            .expect("mascot window state mutex poisoned")
+    }
+
+    #[cfg(windows)]
+    fn set_monitor_move_suppressed(&self, value: bool) {
+        *self
+            .monitor_move_suppressed
+            .lock()
+            .expect("mascot window state mutex poisoned") = value;
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -211,6 +256,7 @@ pub fn initialize<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         state.attach(NativeMascotWindow {
             hwnd: hwnd as isize,
         });
+        attach_window_context(hwnd, app);
     }
 
     #[cfg(not(windows))]
@@ -235,6 +281,74 @@ pub fn resize<R: Runtime>(app: &AppHandle<R>, width: u32, height: u32) -> tauri:
     }
 
     Ok(())
+}
+
+pub fn available_display_monitors<R: Runtime>(
+    app: &AppHandle<R>,
+) -> tauri::Result<Vec<DisplayMonitorOption>> {
+    #[cfg(windows)]
+    {
+        let _ = app;
+        return list_display_monitors_windows()
+            .map(|monitors| monitors.into_iter().map(|monitor| monitor.option).collect())
+            .map_err(tauri::Error::from);
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Ok(Vec::new())
+    }
+}
+
+pub fn current_display_monitor_id<R: Runtime>(_app: &AppHandle<R>) -> tauri::Result<Option<String>> {
+    #[cfg(windows)]
+    {
+        if let Some(state) = _app.try_state::<MascotWindowState>() {
+            let window = *state
+                .window
+                .lock()
+                .expect("mascot window state mutex poisoned");
+            if let Some(window) = window {
+                return current_monitor_id_for_hwnd(
+                    window.hwnd as windows_sys::Win32::Foundation::HWND,
+                )
+                .map_err(tauri::Error::from);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+pub fn move_to_monitor<R: Runtime>(
+    _app: &AppHandle<R>,
+    requested_monitor_id: Option<&str>,
+) -> tauri::Result<Option<String>> {
+    #[cfg(windows)]
+    {
+        if let Some(state) = _app.try_state::<MascotWindowState>() {
+            let window = *state
+                .window
+                .lock()
+                .expect("mascot window state mutex poisoned");
+            if let Some(window) = window {
+                return move_window_to_monitor_windows(
+                    &state,
+                    window.hwnd as windows_sys::Win32::Foundation::HWND,
+                    requested_monitor_id,
+                )
+                .map_err(tauri::Error::from);
+            }
+        }
+    }
+
+    Ok(requested_monitor_id.map(str::to_string))
+}
+
+#[tauri::command]
+pub fn get_display_monitors(app: AppHandle) -> Result<Vec<DisplayMonitorOption>, String> {
+    available_display_monitors(&app).map_err(|error| error.to_string())
 }
 
 pub fn present_frame<R: Runtime>(
@@ -284,6 +398,390 @@ mod tests {
         state.set_always_on_top(false).unwrap();
         assert!(!state.is_always_on_top());
     }
+
+    #[test]
+    fn resolve_requested_monitor_prefers_requested_id() {
+        let monitors = vec![
+            test_monitor("\\\\.\\DISPLAY1", true),
+            test_monitor("\\\\.\\DISPLAY2", false),
+        ];
+
+        assert_eq!(
+            resolve_monitor_id(Some("\\\\.\\DISPLAY2"), Some("\\\\.\\DISPLAY1"), &monitors)
+                .as_deref(),
+            Some("\\\\.\\DISPLAY2")
+        );
+    }
+
+    #[test]
+    fn resolve_requested_monitor_falls_back_to_primary() {
+        let monitors = vec![
+            test_monitor("\\\\.\\DISPLAY1", true),
+            test_monitor("\\\\.\\DISPLAY2", false),
+        ];
+
+        assert_eq!(
+            resolve_monitor_id(Some("\\\\.\\MISSING"), Some("\\\\.\\DISPLAY2"), &monitors)
+                .as_deref(),
+            Some("\\\\.\\DISPLAY1")
+        );
+    }
+
+    #[test]
+    fn display_monitor_label_prefers_friendly_name() {
+        assert_eq!(
+            display_monitor_label("\\\\.\\DISPLAY1", Some("DELL U2720Q"), None, false),
+            "DELL U2720Q"
+        );
+    }
+
+    #[test]
+    fn display_monitor_label_falls_back_to_device_name() {
+        assert_eq!(
+            display_monitor_label("\\\\.\\DISPLAY1", None, None, true),
+            "\\\\.\\DISPLAY1 (Primary)"
+        );
+    }
+
+    #[test]
+    fn display_monitor_label_prefers_readable_fallback_for_builtin_display() {
+        assert_eq!(
+            display_monitor_label("\\\\.\\DISPLAY22", None, Some("Built-in Display"), false),
+            "Built-in Display"
+        );
+    }
+
+    fn test_monitor(id: &str, is_primary: bool) -> DisplayMonitorSnapshot {
+        DisplayMonitorSnapshot {
+            option: DisplayMonitorOption {
+                id: id.to_string(),
+                label: id.to_string(),
+            },
+            work_area: MonitorWorkArea {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1080,
+            },
+            is_primary,
+        }
+    }
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+fn resolve_monitor_id(
+    requested_monitor_id: Option<&str>,
+    current_monitor_id: Option<&str>,
+    monitors: &[DisplayMonitorSnapshot],
+) -> Option<String> {
+    if let Some(requested_monitor_id) = requested_monitor_id {
+        if let Some(monitor) = monitors
+            .iter()
+            .find(|monitor| monitor.option.id == requested_monitor_id)
+        {
+            return Some(monitor.option.id.clone());
+        }
+    } else if let Some(current_monitor_id) = current_monitor_id {
+        if let Some(monitor) = monitors
+            .iter()
+            .find(|monitor| monitor.option.id == current_monitor_id)
+        {
+            return Some(monitor.option.id.clone());
+        }
+    }
+
+    monitors
+        .iter()
+        .find(|monitor| monitor.is_primary)
+        .or_else(|| monitors.first())
+        .map(|monitor| monitor.option.id.clone())
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+fn place_window_in_work_area(size: MascotWindowSize, work_area: MonitorWorkArea) -> (i32, i32) {
+    let width = size.width as i32;
+    let height = size.height as i32;
+    let available_width = (work_area.right - work_area.left).max(0);
+    let available_height = (work_area.bottom - work_area.top).max(0);
+
+    (
+        work_area.left + ((available_width - width).max(0) / 2),
+        work_area.top + ((available_height - height).max(0) / 2),
+    )
+}
+
+fn display_monitor_label(
+    device_name: &str,
+    friendly_name: Option<&str>,
+    fallback_label: Option<&str>,
+    is_primary: bool,
+) -> String {
+    let base = friendly_name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .or_else(|| fallback_label.map(str::trim).filter(|name| !name.is_empty()))
+        .unwrap_or(device_name);
+
+    if is_primary {
+        format!("{base} (Primary)")
+    } else {
+        base.to_string()
+    }
+}
+
+#[cfg(windows)]
+fn move_window_to_monitor_windows(
+    state: &MascotWindowState,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    requested_monitor_id: Option<&str>,
+) -> io::Result<Option<String>> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+
+    let monitors = list_display_monitors_windows()?;
+    let current_monitor_id = current_monitor_id_for_hwnd(hwnd)?;
+
+    if requested_monitor_id.is_none() {
+        return Ok(current_monitor_id);
+    }
+
+    let Some(target_monitor_id) = resolve_monitor_id(
+        requested_monitor_id,
+        current_monitor_id.as_deref(),
+        &monitors,
+    ) else {
+        return Ok(None);
+    };
+
+    if current_monitor_id.as_deref() == Some(target_monitor_id.as_str()) {
+        return Ok(Some(target_monitor_id));
+    }
+
+    let Some(target_monitor) = monitors
+        .iter()
+        .find(|monitor| monitor.option.id == target_monitor_id)
+    else {
+        return Ok(current_monitor_id);
+    };
+
+    let (x, y) = place_window_in_work_area(state.size(), target_monitor.work_area);
+    state.set_monitor_move_suppressed(true);
+    let result = unsafe {
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        )
+    };
+    state.set_monitor_move_suppressed(false);
+
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(Some(target_monitor_id))
+}
+
+#[cfg(windows)]
+fn list_display_monitors_windows() -> io::Result<Vec<DisplayMonitorSnapshot>> {
+    use windows_sys::Win32::Graphics::Gdi::EnumDisplayMonitors;
+
+    unsafe extern "system" fn enumerate_monitors(
+        monitor: windows_sys::Win32::Graphics::Gdi::HMONITOR,
+        _hdc: windows_sys::Win32::Graphics::Gdi::HDC,
+        _clip_rect: *mut windows_sys::Win32::Foundation::RECT,
+        data: windows_sys::Win32::Foundation::LPARAM,
+    ) -> i32 {
+        let monitors = &mut *(data as *mut Vec<DisplayMonitorSnapshot>);
+        if let Ok(snapshot) = monitor_snapshot_from_handle(monitor) {
+            monitors.push(snapshot);
+        }
+        1
+    }
+
+    let mut monitors: Vec<DisplayMonitorSnapshot> = Vec::new();
+    let result = unsafe {
+        EnumDisplayMonitors(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            Some(enumerate_monitors),
+            (&mut monitors as *mut Vec<DisplayMonitorSnapshot>) as isize,
+        )
+    };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let friendly_names = display_monitor_friendly_names_windows().unwrap_or_default();
+    for monitor in &mut monitors {
+        monitor.option.label = display_monitor_label(
+            &monitor.option.id,
+            friendly_names.get(&monitor.option.id).map(String::as_str),
+            None,
+            monitor.is_primary,
+        );
+    }
+
+    monitors.sort_by(
+        |left: &DisplayMonitorSnapshot, right: &DisplayMonitorSnapshot| {
+            left.option.id.cmp(&right.option.id)
+        },
+    );
+    Ok(monitors)
+}
+
+#[cfg(windows)]
+fn monitor_snapshot_from_handle(
+    monitor: windows_sys::Win32::Graphics::Gdi::HMONITOR,
+) -> io::Result<DisplayMonitorSnapshot> {
+    use windows_sys::Win32::{
+        Graphics::Gdi::{GetMonitorInfoW, MONITORINFOEXW},
+        UI::WindowsAndMessaging::MONITORINFOF_PRIMARY,
+    };
+
+    let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
+    info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+
+    let result = unsafe { GetMonitorInfoW(monitor, &mut info.monitorInfo) };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let device_name = wide_nul_terminated_to_string(&info.szDevice);
+    let is_primary = (info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY) != 0;
+    let label = display_monitor_label(&device_name, None, None, is_primary);
+
+    Ok(DisplayMonitorSnapshot {
+        option: DisplayMonitorOption {
+            id: device_name,
+            label,
+        },
+        work_area: MonitorWorkArea {
+            left: info.monitorInfo.rcWork.left,
+            top: info.monitorInfo.rcWork.top,
+            right: info.monitorInfo.rcWork.right,
+            bottom: info.monitorInfo.rcWork.bottom,
+        },
+        is_primary,
+    })
+}
+
+#[cfg(windows)]
+fn current_monitor_id_for_hwnd(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+) -> io::Result<Option<String>> {
+    use windows_sys::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    if monitor.is_null() {
+        return Ok(None);
+    }
+
+    Ok(Some(monitor_snapshot_from_handle(monitor)?.option.id))
+}
+
+#[cfg(windows)]
+fn wide_nul_terminated_to_string(raw: &[u16]) -> String {
+    let len = raw.iter().position(|ch| *ch == 0).unwrap_or(raw.len());
+    String::from_utf16_lossy(&raw[..len])
+}
+
+#[cfg(windows)]
+fn display_monitor_friendly_names_windows() -> io::Result<BTreeMap<String, String>> {
+    use windows_sys::Win32::{
+        Devices::Display::{
+            DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
+            DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
+            DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_SOURCE_DEVICE_NAME,
+            DISPLAYCONFIG_TARGET_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+        },
+        Foundation::WIN32_ERROR,
+    };
+
+    let mut path_count = 0_u32;
+    let mut mode_count = 0_u32;
+    let status = unsafe {
+        GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut path_count, &mut mode_count)
+    };
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+
+    let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); path_count as usize];
+    let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); mode_count as usize];
+    let status: WIN32_ERROR = unsafe {
+        QueryDisplayConfig(
+            QDC_ONLY_ACTIVE_PATHS,
+            &mut path_count,
+            paths.as_mut_ptr(),
+            &mut mode_count,
+            modes.as_mut_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+
+    paths.truncate(path_count as usize);
+    let mut friendly_names = BTreeMap::new();
+    for path in paths {
+        let mut source_name = DISPLAYCONFIG_SOURCE_DEVICE_NAME::default();
+        source_name.header.size = std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32;
+        source_name.header.adapterId = path.sourceInfo.adapterId;
+        source_name.header.id = path.sourceInfo.id;
+        source_name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+
+        let source_status = unsafe { DisplayConfigGetDeviceInfo(&mut source_name.header) };
+        if source_status != 0 {
+            continue;
+        }
+
+        let mut target_name = DISPLAYCONFIG_TARGET_DEVICE_NAME::default();
+        target_name.header.size = std::mem::size_of::<DISPLAYCONFIG_TARGET_DEVICE_NAME>() as u32;
+        target_name.header.adapterId = path.targetInfo.adapterId;
+        target_name.header.id = path.targetInfo.id;
+        target_name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+
+        let target_status = unsafe { DisplayConfigGetDeviceInfo(&mut target_name.header) };
+        if target_status != 0 {
+            continue;
+        }
+
+        let source_device_name = wide_nul_terminated_to_string(&source_name.viewGdiDeviceName);
+        let friendly_name = wide_nul_terminated_to_string(&target_name.monitorFriendlyDeviceName);
+        let resolved_label = if !friendly_name.is_empty() {
+            Some(friendly_name)
+        } else {
+            match target_name.outputTechnology {
+                DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL
+                | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED
+                | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS
+                | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED => {
+                    Some("Built-in Display".to_string())
+                }
+                _ => None,
+            }
+        };
+
+        if !source_device_name.is_empty() {
+            if let Some(resolved_label) = resolved_label {
+            friendly_names
+                .entry(source_device_name)
+                .or_insert(resolved_label);
+            }
+        }
+    }
+
+    Ok(friendly_names)
 }
 
 #[cfg(windows)]
@@ -380,6 +878,41 @@ fn apply_window_topmost(
 }
 
 #[cfg(windows)]
+fn attach_window_context<R: Runtime>(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    app: &AppHandle<R>,
+) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_USERDATA};
+
+    let app_handle = app.clone();
+    let context = Box::new(NativeMascotWindowContext {
+        on_monitor_changed: Box::new(move |monitor_id| {
+            if let Some(state) = app_handle.try_state::<MascotWindowState>() {
+                if state.is_monitor_move_suppressed() {
+                    return;
+                }
+            }
+
+            let _ = crate::app_settings::sync_display_monitor_from_window(&app_handle, monitor_id);
+        }),
+    });
+
+    unsafe {
+        let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
+    }
+}
+
+#[cfg(windows)]
+unsafe fn window_context(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+) -> Option<&'static NativeMascotWindowContext> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWLP_USERDATA};
+
+    let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut NativeMascotWindowContext;
+    ptr.as_ref()
+}
+
+#[cfg(windows)]
 unsafe extern "system" fn mascot_window_proc(
     hwnd: windows_sys::Win32::Foundation::HWND,
     message: u32,
@@ -387,12 +920,28 @@ unsafe extern "system" fn mascot_window_proc(
     lparam: isize,
 ) -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcA, SendMessageA, HTCAPTION, WM_LBUTTONDOWN, WM_NCLBUTTONDOWN,
+        DefWindowProcA, GetWindowLongPtrW, SendMessageA, SetWindowLongPtrW, GWLP_USERDATA,
+        HTCAPTION, WM_LBUTTONDOWN, WM_NCDESTROY, WM_NCLBUTTONDOWN, WM_WINDOWPOSCHANGED,
     };
 
     if message == WM_LBUTTONDOWN {
         let _ = SendMessageA(hwnd, WM_NCLBUTTONDOWN, HTCAPTION as usize, 0);
         return 0;
+    }
+
+    if message == WM_WINDOWPOSCHANGED {
+        if let Some(context) = window_context(hwnd) {
+            let monitor_id = current_monitor_id_for_hwnd(hwnd).ok().flatten();
+            (context.on_monitor_changed)(monitor_id);
+        }
+    }
+
+    if message == WM_NCDESTROY {
+        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut NativeMascotWindowContext;
+        if !ptr.is_null() {
+            let _ = Box::from_raw(ptr);
+            let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        }
     }
 
     DefWindowProcA(hwnd, message, wparam, lparam)

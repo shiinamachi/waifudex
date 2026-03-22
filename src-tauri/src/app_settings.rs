@@ -20,6 +20,7 @@ pub const BASE_MASCOT_HEIGHT: u32 = 720;
 pub struct AppSettings {
     pub always_on_top: bool,
     pub character_scale: f64,
+    pub display_monitor_id: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -27,6 +28,7 @@ impl Default for AppSettings {
         Self {
             always_on_top: true,
             character_scale: 1.0,
+            display_monitor_id: None,
         }
     }
 }
@@ -36,6 +38,7 @@ impl Default for AppSettings {
 pub struct AppSettingsUpdate {
     pub always_on_top: Option<bool>,
     pub character_scale: Option<f64>,
+    pub display_monitor_id: Option<String>,
 }
 
 impl AppSettingsUpdate {
@@ -44,7 +47,11 @@ impl AppSettingsUpdate {
             settings.always_on_top = always_on_top;
         }
         if let Some(character_scale) = self.character_scale {
-            settings.character_scale = character_scale.clamp(MIN_CHARACTER_SCALE, MAX_CHARACTER_SCALE);
+            settings.character_scale =
+                character_scale.clamp(MIN_CHARACTER_SCALE, MAX_CHARACTER_SCALE);
+        }
+        if let Some(display_monitor_id) = &self.display_monitor_id {
+            settings.display_monitor_id = Some(display_monitor_id.clone());
         }
     }
 }
@@ -111,6 +118,14 @@ fn app_settings_changed_payload(settings: &AppSettings) -> AppSettings {
     settings.clone()
 }
 
+fn emit_app_settings_changed<R: Runtime>(app: &AppHandle<R>, settings: &AppSettings) {
+    let _ = crate::tray::sync_always_on_top_menu_item(app);
+    let _ = app.emit(
+        APP_SETTINGS_CHANGED_EVENT,
+        app_settings_changed_payload(settings),
+    );
+}
+
 pub fn initialize<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let path = app_settings_path(app)?;
     let settings = load_app_settings_from_path(&path);
@@ -129,6 +144,35 @@ pub fn current_app_settings<R: Runtime>(app: &AppHandle<R>) -> AppSettings {
     app.state::<AppSettingsState>().current()
 }
 
+pub fn sync_display_monitor_on_startup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    let current = current_app_settings(app);
+    let resolved_monitor_id =
+        crate::mascot_window::move_to_monitor(app, current.display_monitor_id.as_deref())?;
+    if resolved_monitor_id != current.display_monitor_id {
+        let _ = sync_display_monitor_from_window(app, resolved_monitor_id)?;
+    }
+
+    Ok(())
+}
+
+pub fn sync_display_monitor_from_window<R: Runtime>(
+    app: &AppHandle<R>,
+    display_monitor_id: Option<String>,
+) -> tauri::Result<AppSettings> {
+    let state = app.state::<AppSettingsState>();
+    let (current, path) = state.snapshot(app)?;
+    if current.display_monitor_id == display_monitor_id {
+        return Ok(current);
+    }
+
+    let mut next = current.clone();
+    next.display_monitor_id = display_monitor_id;
+    persist_app_settings_to_path(&path, &next)?;
+    state.replace(path, next.clone());
+    emit_app_settings_changed(app, &next);
+    Ok(next)
+}
+
 pub fn update_app_settings<R: Runtime>(
     app: &AppHandle<R>,
     update: AppSettingsUpdate,
@@ -144,6 +188,18 @@ pub fn update_app_settings<R: Runtime>(
     }
 
     crate::mascot_window::set_always_on_top(app, next.always_on_top)?;
+
+    if next.display_monitor_id != previous.display_monitor_id {
+        match crate::mascot_window::move_to_monitor(app, next.display_monitor_id.as_deref()) {
+            Ok(resolved_monitor_id) => {
+                next.display_monitor_id = resolved_monitor_id;
+            }
+            Err(error) => {
+                let _ = crate::mascot_window::set_always_on_top(app, previous.always_on_top);
+                return Err(error);
+            }
+        }
+    }
 
     if (next.character_scale - previous.character_scale).abs() > f64::EPSILON {
         let next_width = (BASE_MASCOT_WIDTH as f64 * next.character_scale) as u32;
@@ -162,6 +218,10 @@ pub fn update_app_settings<R: Runtime>(
     }
 
     if let Err(error) = persist_app_settings_to_path(&path, &next) {
+        if next.display_monitor_id != previous.display_monitor_id {
+            let _ =
+                crate::mascot_window::move_to_monitor(app, previous.display_monitor_id.as_deref());
+        }
         if (next.character_scale - previous.character_scale).abs() > f64::EPSILON {
             let prev_width = (BASE_MASCOT_WIDTH as f64 * previous.character_scale) as u32;
             let prev_height = (BASE_MASCOT_HEIGHT as f64 * previous.character_scale) as u32;
@@ -173,11 +233,7 @@ pub fn update_app_settings<R: Runtime>(
     }
 
     state.replace(path, next.clone());
-    let _ = crate::tray::sync_always_on_top_menu_item(app);
-    let _ = app.emit(
-        APP_SETTINGS_CHANGED_EVENT,
-        app_settings_changed_payload(&next),
-    );
+    emit_app_settings_changed(app, &next);
     Ok(next)
 }
 
@@ -225,7 +281,9 @@ fn persist_app_settings_to_path(path: &Path, settings: &AppSettings) -> tauri::R
 fn parse_app_settings_json(contents: &str) -> AppSettings {
     match serde_json::from_str::<AppSettings>(contents) {
         Ok(mut settings) => {
-            settings.character_scale = settings.character_scale.clamp(MIN_CHARACTER_SCALE, MAX_CHARACTER_SCALE);
+            settings.character_scale = settings
+                .character_scale
+                .clamp(MIN_CHARACTER_SCALE, MAX_CHARACTER_SCALE);
             settings
         }
         Err(error) => {
@@ -250,6 +308,11 @@ mod tests {
     }
 
     #[test]
+    fn app_settings_default_monitor_id_is_empty() {
+        assert_eq!(AppSettings::default().display_monitor_id, None);
+    }
+
+    #[test]
     fn invalid_settings_json_falls_back_to_defaults() {
         let settings = parse_app_settings_json("{invalid json");
         assert_eq!(settings, AppSettings::default());
@@ -268,6 +331,7 @@ mod tests {
         let payload = app_settings_changed_payload(&AppSettings {
             always_on_top: false,
             character_scale: 0.8,
+            display_monitor_id: Some("\\\\.\\DISPLAY2".to_string()),
         });
 
         assert_eq!(
@@ -275,7 +339,20 @@ mod tests {
             serde_json::json!({
                 "alwaysOnTop": false,
                 "characterScale": 0.8,
+                "displayMonitorId": "\\\\.\\DISPLAY2",
             })
+        );
+    }
+
+    #[test]
+    fn parse_app_settings_reads_display_monitor_id() {
+        let settings = parse_app_settings_json(
+            r#"{"alwaysOnTop":false,"characterScale":1.0,"displayMonitorId":"\\\\.\\DISPLAY2"}"#,
+        );
+
+        assert_eq!(
+            settings.display_monitor_id.as_deref(),
+            Some("\\\\.\\DISPLAY2")
         );
     }
 

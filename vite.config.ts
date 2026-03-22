@@ -1,6 +1,6 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { vanillaExtractPlugin } from "@vanilla-extract/vite-plugin";
+import { defineConfig } from "vite";
 
 const tauriDevHost = process.env.TAURI_DEV_HOST;
 

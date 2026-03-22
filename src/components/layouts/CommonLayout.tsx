@@ -11,7 +11,7 @@ import {
 } from "@fluentui/react-components";
 import "the-new-css-reset";
 
-import { contents, providerRoot } from "./common-layout.css";
+import { contents, layoutRoot, providerRoot } from "./common-layout.css";
 
 function systemThemeFallback(): WindowTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -56,11 +56,15 @@ export default function CommonLayout({ children }: PropsWithChildren) {
   }, []);
 
   return (
-    <FluentProvider
-      className={providerRoot}
-      theme={windowTheme === "dark" ? webDarkTheme : webLightTheme}
-    >
-      <div className={contents}>{children}</div>
-    </FluentProvider>
+    <div className={layoutRoot}>
+      <FluentProvider
+        style={{ height: "100%" }}
+        theme={windowTheme === "dark" ? webDarkTheme : webLightTheme}
+      >
+        <div className={providerRoot}>
+          <div className={contents}>{children}</div>
+        </div>
+      </FluentProvider>
+    </div>
   );
 }

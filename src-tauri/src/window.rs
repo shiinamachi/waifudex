@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use crate::codex::StatusKind;
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
-const SETTINGS_WINDOW_LABEL: &str = "settings";
+pub const SETTINGS_WINDOW_LABEL: &str = "settings";
 const SETTINGS_WINDOW_TITLE: &str = "Settings - waifudex";
 const SETTINGS_WINDOW_ENTRY: &str = "index.html";
 

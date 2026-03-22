@@ -10,7 +10,10 @@ use inochi2d_sys::{
 };
 use khronos_egl as egl;
 
-use super::{flip_rows, initialize_inochi2d, load_params, load_puppet, trace_stage, NativeParam};
+use super::{
+    apply_camera_for_viewport, flip_rows, initialize_inochi2d, load_params, load_puppet,
+    trace_stage, NativeParam,
+};
 use crate::{MascotError, MascotParamValue, ParamInfo, Result};
 
 const EGL_PLATFORM_SURFACELESS_MESA: egl::Enum = 0x31DD;
@@ -195,6 +198,7 @@ impl NativeMascotRenderer {
             gl::Viewport(0, 0, width as i32, height as i32);
             inViewportSet(width, height);
         }
+        apply_camera_for_viewport(width, height);
         self.dirty = true;
         Ok(())
     }

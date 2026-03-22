@@ -9,11 +9,13 @@ const UPDATE_APP_SETTINGS_COMMAND = "update_app_settings_command";
 export interface AppSettings {
   alwaysOnTop: boolean;
   characterScale: number;
+  displayMonitorId: string | null;
 }
 
 export interface AppSettingsUpdate {
   alwaysOnTop?: boolean;
   characterScale?: number;
+  displayMonitorId?: string | null;
 }
 
 interface AppSettingsStoreSnapshot {
@@ -24,6 +26,7 @@ interface AppSettingsStoreSnapshot {
 const DEFAULT_APP_SETTINGS: AppSettings = {
   alwaysOnTop: true,
   characterScale: 1.0,
+  displayMonitorId: null,
 };
 
 let snapshot: AppSettingsStoreSnapshot = {

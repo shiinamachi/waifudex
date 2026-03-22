@@ -22,11 +22,14 @@ globalStyle("#app", {
 });
 
 export const providerRoot = style({
-  height: "100%",
   backgroundColor: tokens.colorNeutralBackground1,
   color: tokens.colorNeutralForeground1,
 });
 
 export const contents = style({
+  height: "100%",
+});
+
+export const layoutRoot = style({
   height: "100%",
 });

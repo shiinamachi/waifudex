@@ -13,9 +13,18 @@ use inochi2d_sys::{
 
 use crate::{MascotError, ParamInfo, Result};
 
-const CAMERA_ZOOM: f32 = 0.24;
-const CAMERA_POS_X: f32 = 0.0;
-const CAMERA_POS_Y: f32 = 850.0;
+const DEFAULT_CAMERA_REFERENCE_WIDTH: f32 = 630.0;
+const DEFAULT_CAMERA_REFERENCE_HEIGHT: f32 = 1080.0;
+const DEFAULT_CAMERA_ZOOM: f32 = 0.24;
+const DEFAULT_CAMERA_POS_X: f32 = 0.0;
+const DEFAULT_CAMERA_POS_Y: f32 = 850.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CameraFit {
+    zoom: f32,
+    position_x: f32,
+    position_y: f32,
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct NativeParam {
@@ -30,13 +39,7 @@ pub(super) fn initialize_inochi2d(width: u32, height: u32) {
         inViewportSet(width.max(1), height.max(1));
     }
 
-    let camera = unsafe { inCameraGetCurrent() };
-    if !camera.is_null() {
-        unsafe {
-            inCameraSetZoom(camera, CAMERA_ZOOM);
-            inCameraSetPosition(camera, CAMERA_POS_X, CAMERA_POS_Y);
-        }
-    }
+    apply_camera_for_viewport(width, height);
 }
 
 pub(super) fn load_puppet(model_path: &Path) -> Result<NonNull<InPuppet>> {
@@ -116,6 +119,31 @@ pub(super) fn last_ffi_error() -> MascotError {
     MascotError::NativeFfi(String::from_utf8_lossy(message).into_owned())
 }
 
+pub(super) fn apply_camera_for_viewport(width: u32, height: u32) {
+    let fit = camera_fit_for_viewport(width, height);
+    let Some(camera) = NonNull::new(unsafe { inCameraGetCurrent() }) else {
+        return;
+    };
+
+    unsafe {
+        inCameraSetZoom(camera.as_ptr(), fit.zoom);
+        inCameraSetPosition(camera.as_ptr(), fit.position_x, fit.position_y);
+    }
+}
+
+fn camera_fit_for_viewport(width: u32, height: u32) -> CameraFit {
+    let viewport_width = width.max(1) as f32;
+    let viewport_height = height.max(1) as f32;
+    let scale = (viewport_width / DEFAULT_CAMERA_REFERENCE_WIDTH)
+        .min(viewport_height / DEFAULT_CAMERA_REFERENCE_HEIGHT);
+
+    CameraFit {
+        zoom: (DEFAULT_CAMERA_ZOOM * scale).max(f32::EPSILON),
+        position_x: DEFAULT_CAMERA_POS_X,
+        position_y: DEFAULT_CAMERA_POS_Y,
+    }
+}
+
 #[cfg(target_os = "linux")]
 pub(super) fn flip_rows(rgba: &mut [u8], width: usize, height: usize) {
     let stride = width * 4;
@@ -130,6 +158,31 @@ pub(super) fn flip_rows(rgba: &mut [u8], width: usize, height: usize) {
 }
 
 pub(super) fn trace_stage(_stage: &str) {}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        camera_fit_for_viewport, DEFAULT_CAMERA_POS_X, DEFAULT_CAMERA_POS_Y, DEFAULT_CAMERA_ZOOM,
+    };
+
+    #[test]
+    fn camera_fit_for_reference_viewport_preserves_default_camera() {
+        let fit = camera_fit_for_viewport(630, 1080);
+
+        assert!((fit.zoom - DEFAULT_CAMERA_ZOOM).abs() < 0.0001);
+        assert!((fit.position_x - DEFAULT_CAMERA_POS_X).abs() < 0.0001);
+        assert!((fit.position_y - DEFAULT_CAMERA_POS_Y).abs() < 0.0001);
+    }
+
+    #[test]
+    fn camera_fit_for_smaller_viewport_scales_zoom_down_linearly() {
+        let fit = camera_fit_for_viewport(420, 720);
+
+        assert!((fit.zoom - 0.16).abs() < 0.0001);
+        assert!((fit.position_x - DEFAULT_CAMERA_POS_X).abs() < 0.0001);
+        assert!((fit.position_y - DEFAULT_CAMERA_POS_Y).abs() < 0.0001);
+    }
+}
 
 #[cfg(target_os = "linux")]
 mod linux;

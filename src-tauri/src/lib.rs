@@ -11,6 +11,14 @@ pub mod window;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if window.label() == crate::window::SETTINGS_WINDOW_LABEL {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .manage(app_settings::AppSettingsState::new())
         .manage(mascot::MascotManager::new())
         .manage(mascot_window::MascotWindowState::new())
@@ -19,13 +27,15 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             runtime_state::get_runtime_bootstrap,
             app_settings::get_app_settings,
-            app_settings::update_app_settings_command
+            app_settings::update_app_settings_command,
+            mascot_window::get_display_monitors
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
 
             app_settings::initialize(&app_handle)?;
             mascot_window::initialize(&app_handle)?;
+            let _ = app_settings::sync_display_monitor_on_startup(&app_handle);
             let _ = mascot::initialize_default_mascot(&app_handle);
             window::show_character_window(&app_handle)?;
             tray::build_tray(&app_handle)?;
