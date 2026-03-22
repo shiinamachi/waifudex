@@ -22,6 +22,21 @@ export const characterArea = style({
 export const monitorLabel = style({
   position: "absolute",
   top: tokens.spacingVerticalXS,
+  right: tokens.spacingHorizontalXS,
+  maxWidth: "calc(100% - 16px)",
+  padding: `2px ${tokens.spacingHorizontalXS}`,
+  fontSize: "10px",
+  color: tokens.colorNeutralForeground3,
+  backgroundColor: tokens.colorNeutralBackground1,
+  borderRadius: tokens.borderRadiusSmall,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+});
+
+export const monitorResolutionLabel = style({
+  position: "absolute",
+  top: tokens.spacingVerticalXS,
   left: tokens.spacingHorizontalXS,
   fontSize: "10px",
   color: tokens.colorNeutralForeground4,

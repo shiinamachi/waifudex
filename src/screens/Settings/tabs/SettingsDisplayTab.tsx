@@ -45,6 +45,7 @@ export default function SettingsDisplayTab() {
     (monitor) => monitor.id === displayMonitorId,
   );
   const selectedMonitorValue = selectedMonitor?.label ?? displayMonitorId ?? "";
+  const selectedMonitorLabel = selectedMonitor?.label ?? displayMonitorId ?? null;
   const displayWidth = Math.round(BASE_WIDTH * displayScale);
   const displayHeight = Math.round(BASE_HEIGHT * displayScale);
 
@@ -90,7 +91,7 @@ export default function SettingsDisplayTab() {
 
       <SettingItem
         title="Display monitor"
-        description="Choose which monitor shows the mascot window"
+        description="Choose which monitor shows the character window"
       >
         <div
           style={{
@@ -165,7 +166,10 @@ export default function SettingsDisplayTab() {
           <Caption1 style={{ color: tokens.colorNeutralForeground4 }}>
             {displayWidth} x {displayHeight}
           </Caption1>
-          <MonitorPreview scale={displayScale} />
+          <MonitorPreview
+            monitorName={selectedMonitorLabel}
+            scale={displayScale}
+          />
         </div>
       </SettingItem>
     </div>
