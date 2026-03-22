@@ -8,7 +8,7 @@ import {
 } from "@fluentui/react-components";
 
 import CommonLayout from "../../components/layouts/CommonLayout";
-import { layout, panel, tabList } from "./index.css";
+import { layout, panel, panelScroll, tabList } from "./index.css";
 import SettingsDisplayTab from "./tabs/SettingsDisplayTab";
 
 const DEFAULT_TAB: TabValue = "display";
@@ -34,7 +34,9 @@ export default function Settings() {
         </TabList>
 
         <div className={panel}>
-          {selectedTab === "display" && <SettingsDisplayTab />}
+          <div className={panelScroll}>
+            {selectedTab === "display" && <SettingsDisplayTab />}
+          </div>
         </div>
       </div>
     </CommonLayout>
