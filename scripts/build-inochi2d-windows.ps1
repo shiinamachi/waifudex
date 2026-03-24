@@ -88,25 +88,40 @@ function Ensure-HostGitver {
         New-Item -ItemType Directory -Force -Path $dubPackagesDir | Out-Null
     }
 
-    $hostGitverDir = Get-ChildItem -Path $dubPackagesDir -Directory -Recurse -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -eq "gitver" -and (Test-Path (Join-Path $_.FullName "dub.sdl"))
-        } |
-        Sort-Object FullName -Descending |
-        Select-Object -ExpandProperty FullName -First 1
+    function Find-HostGitverDir {
+        $directMatches = Get-ChildItem -Path (Join-Path $dubPackagesDir "gitver") -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "gitver" } |
+            Where-Object {
+                (Test-Path $_) -and (
+                    (Test-Path (Join-Path $_ "dub.sdl")) -or
+                    (Test-Path (Join-Path $_ "dub.json"))
+                )
+            }
+
+        if ($directMatches) {
+            return ($directMatches | Sort-Object -Descending | Select-Object -First 1)
+        }
+
+        return Get-ChildItem -Path $dubPackagesDir -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -eq "gitver" -and (
+                    (Test-Path (Join-Path $_.FullName "dub.sdl")) -or
+                    (Test-Path (Join-Path $_.FullName "dub.json"))
+                )
+            } |
+            Sort-Object FullName -Descending |
+            Select-Object -ExpandProperty FullName -First 1
+    }
+
+    $hostGitverDir = Find-HostGitverDir
 
     if (-not $hostGitverDir) {
-        & $Dub fetch gitver "--version=1.7.2" | Out-Null
+        & $Dub fetch "gitver@1.7.2" | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "failed to fetch gitver package"
         }
 
-        $hostGitverDir = Get-ChildItem -Path $dubPackagesDir -Directory -Recurse -ErrorAction SilentlyContinue |
-            Where-Object {
-                $_.Name -eq "gitver" -and (Test-Path (Join-Path $_.FullName "dub.sdl"))
-            } |
-            Sort-Object FullName -Descending |
-            Select-Object -ExpandProperty FullName -First 1
+        $hostGitverDir = Find-HostGitverDir
     }
 
     if (-not $hostGitverDir) {
