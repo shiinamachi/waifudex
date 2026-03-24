@@ -274,7 +274,7 @@ function Build-RuntimeLibs {
 
         Push-Location $runtimeBuildDir
         try {
-            & ninja -k 0 "lib/libdruntime-ldc.a" "lib/libphobos2-ldc.a" | Out-Null
+            & ninja -k 0 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "failed to build ldc runtime libraries"
             }
@@ -288,52 +288,60 @@ function Build-RuntimeLibs {
         $env:CXX = $previousCxx
     }
 
-    Invoke-PythonScript -Arguments @($runtimeBuildDir, $runtimeLibDir) -Script @'
+Invoke-PythonScript -Arguments @($runtimeBuildDir, $runtimeLibDir) -Script @'
 import os
-import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 
 build_dir = sys.argv[1]
 out_dir = sys.argv[2]
 targets = [
-    ("lib/libdruntime-ldc.a", "druntime-ldc.lib"),
-    ("lib/libphobos2-ldc.a", "phobos2-ldc.lib"),
+    ("druntime-ldc", "druntime-ldc.lib"),
+    ("phobos2-ldc", "phobos2-ldc.lib"),
 ]
 
-for ninja_target, out_name in targets:
-    output = subprocess.check_output(
-        ["ninja", "-t", "commands", ninja_target], cwd=build_dir, text=True
-    )
-    link_line = [line for line in output.splitlines() if " -lib -of=" in line][-1]
-    args = shlex.split(link_line)
-    objects = []
-    capture = False
-    for arg in args:
-        if arg.startswith("-of=lib/lib"):
-            capture = True
-            continue
-        if not capture:
-            continue
-        if arg.startswith("-") or arg in {"&&", ":"}:
-            break
-        if arg.endswith(".o") or arg.endswith(".obj"):
-            direct = os.path.join(build_dir, arg)
-            alt = (
-                os.path.join(build_dir, arg[:-2] + ".obj")
-                if arg.endswith(".o")
-                else direct
-            )
-            if os.path.exists(direct):
-                objects.append(direct)
-            elif os.path.exists(alt):
-                objects.append(alt)
-            else:
-                raise SystemExit(f"missing runtime object: {direct} or {alt}")
-    subprocess.run(
-        ["llvm-lib", f"/OUT:{os.path.join(out_dir, out_name)}", *objects],
-        check=True,
-    )
+def find_runtime_library(stem: str) -> str:
+    preferred = [
+        f"{stem}.lib",
+        f"lib{stem}.a",
+        f"{stem}.a",
+    ]
+    fallback = []
+
+    for root, _, files in os.walk(build_dir):
+        for name in files:
+            lower_name = name.lower()
+            full_path = os.path.join(root, name)
+            if lower_name in preferred:
+                return full_path
+            if lower_name.startswith(stem) and os.path.splitext(lower_name)[1] in {".lib", ".a"}:
+                fallback.append(full_path)
+
+    if fallback:
+        fallback.sort(key=lambda path: (0 if path.lower().endswith(".lib") else 1, len(path)))
+        return fallback[0]
+
+    raise SystemExit(f"missing runtime library matching {stem!r} under {build_dir}")
+
+
+for stem, out_name in targets:
+    source = find_runtime_library(stem)
+    destination = os.path.join(out_dir, out_name)
+
+    if source.lower().endswith(".lib"):
+        shutil.copyfile(source, destination)
+        continue
+
+    with tempfile.TemporaryDirectory(dir=build_dir) as tmp:
+        subprocess.run(["llvm-ar", "x", source], cwd=tmp, check=True)
+        members = []
+        for root, _, files in os.walk(tmp):
+            for name in files:
+                if name.endswith(".o") or name.endswith(".obj"):
+                    members.append(os.path.join(root, name))
+        subprocess.run(["llvm-lib", f"/OUT:{destination}", *sorted(members)], check=True)
 '@
 
     foreach ($file in @("druntime-ldc.lib", "phobos2-ldc.lib")) {
