@@ -52,13 +52,6 @@ if (Test-CommandAvailable "rustup") {
     }
 }
 
-if (-not (Test-CommandAvailable "cargo-xwin")) {
-    & cargo install --locked cargo-xwin
-    if ($LASTEXITCODE -ne 0) {
-        throw "cargo install --locked cargo-xwin failed with exit code $LASTEXITCODE"
-    }
-}
-
 if (-not (Test-CommandAvailable "python")) {
     Install-WingetPackage -Id "Python.Python.3.12"
 }
@@ -85,6 +78,13 @@ if (-not (Test-CommandAvailable "link.exe")) {
 $importedMsvc = Import-MsvcDevShell
 if (-not $importedMsvc) {
     throw "Visual Studio Build Tools may not be installed or discoverable. Could not import the MSVC developer shell."
+}
+
+if (-not (Test-CommandAvailable "cargo-xwin")) {
+    & cargo install --locked cargo-xwin
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo install --locked cargo-xwin failed with exit code $LASTEXITCODE"
+    }
 }
 
 if (-not (Test-CommandAvailable "dub")) {
