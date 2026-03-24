@@ -404,6 +404,8 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org/>`,
+  "CDLA-Permissive-2.0":
+    "Placeholder license text for CDLA-Permissive-2.0. Replace with the full official text before release if needed.",
   Zlib: String.raw`This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
 arising from the use of this software.

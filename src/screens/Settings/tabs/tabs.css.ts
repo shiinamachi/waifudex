@@ -6,3 +6,19 @@ export const tabsContainer = style({
   flexDirection: "column",
   gap: tokens.spacingVerticalS,
 });
+
+export const updateActions = style({
+  display: "flex",
+  flexWrap: "wrap",
+  gap: tokens.spacingHorizontalS,
+  marginTop: tokens.spacingVerticalS,
+});
+
+export const updateMeta = style({
+  color: tokens.colorNeutralForeground3,
+  marginTop: tokens.spacingVerticalXS,
+});
+
+export const updateStatus = style({
+  color: tokens.colorNeutralForeground2,
+});

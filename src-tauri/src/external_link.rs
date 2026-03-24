@@ -20,8 +20,7 @@ fn open_external_url(url: &str) -> Result<(), String> {
         return Err("only http and https URLs are supported".to_string());
     }
 
-    tauri_plugin_opener::open_url(url, Option::<&str>::None)
-        .map_err(|error| error.to_string())
+    tauri_plugin_opener::open_url(url, Option::<&str>::None).map_err(|error| error.to_string())
 }
 
 fn parse_open_external_url_payload(payload: &str) -> Option<String> {
@@ -32,7 +31,10 @@ fn parse_open_external_url_payload(payload: &str) -> Option<String> {
 pub fn register_open_external_url_listener<R: Runtime>(app: &AppHandle<R>) {
     app.listen_any(OPEN_EXTERNAL_URL_EVENT, |event| {
         let Some(url) = parse_open_external_url_payload(event.payload()) else {
-            eprintln!("failed to parse open external url payload: {}", event.payload());
+            eprintln!(
+                "failed to parse open external url payload: {}",
+                event.payload()
+            );
             return;
         };
 
