@@ -27,7 +27,11 @@ if ($root.StartsWith("\\")) {
 try {
     Set-Location -LiteralPath $rootPath
 
-    $bash = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+    $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
+    $bash = $null
+    if ($bashCommand) {
+        $bash = $bashCommand.Source
+    }
     if (-not $bash) {
         throw "bash was not found on PATH. Install Git Bash or another bash-compatible environment on Windows to run scripts/build-inochi2d-windows.sh."
     }
