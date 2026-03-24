@@ -6,6 +6,7 @@ src-tauri/target
 src-tauri/gen
 AGENTS.md
 CLAUDE.md
+production.key
 docs
 .worktress
 .worktrees

@@ -29,6 +29,13 @@ if ($root.StartsWith("\\")) {
 try {
     Set-Location -LiteralPath $rootPath
 
+    $signingKeyPath = Join-Path $rootPath "production.key"
+    if (-not (Test-Path -LiteralPath $signingKeyPath -PathType Leaf)) {
+        throw "Missing Tauri signing key: $signingKeyPath"
+    }
+
+    $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $signingKeyPath
+
     & .\scripts\ensure-windows-host-build-env.ps1
     Import-MsvcDevShell | Out-Null
     node .\scripts\sync-app-version.mjs
