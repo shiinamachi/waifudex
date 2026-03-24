@@ -60,7 +60,8 @@ export default function SettingsDisplayTab() {
   );
   const previewMonitor = selectedMonitor ?? null;
   const selectedMonitorValue = selectedMonitor?.label ?? displayMonitorId ?? "";
-  const selectedMonitorLabel = selectedMonitor?.label ?? displayMonitorId ?? null;
+  const selectedMonitorLabel =
+    selectedMonitor?.label ?? displayMonitorId ?? null;
   const displayWidth = Math.round(BASE_WIDTH * displayScale);
   const displayHeight = Math.round(BASE_HEIGHT * displayScale);
 
@@ -144,11 +145,7 @@ export default function SettingsDisplayTab() {
         title="Display monitor"
         description="Choose which monitor shows the character window"
       >
-        <div
-          style={{
-            padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
-          }}
-        >
+        <div>
           <Dropdown
             appearance="outline"
             disabled={!isLoaded || monitorOptions.length === 0}
@@ -178,11 +175,7 @@ export default function SettingsDisplayTab() {
         title="Character size and position"
         description="Adjust the character window size and drag the preview to reposition it"
       >
-        <div
-          style={{
-            padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
-          }}
-        >
+        <div>
           <div
             style={{
               display: "flex",
