@@ -9,6 +9,30 @@ function Test-CommandAvailable {
     [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Refresh-PathFromMachine {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $segments = @()
+    if ($machinePath) {
+        $segments += $machinePath
+    }
+    if ($userPath) {
+        $segments += $userPath
+    }
+    if ($env:PATH) {
+        $segments += $env:PATH
+    }
+
+    $env:PATH = ($segments -join ";")
+}
+
+function Test-WingetPackageInstalled {
+    param([string]$Id)
+
+    & winget list -e --id $Id --accept-source-agreements | Out-Null
+    $LASTEXITCODE -eq 0
+}
+
 function Install-WingetPackage {
     param(
         [string]$Id,
@@ -29,8 +53,15 @@ function Install-WingetPackage {
 
     & winget @command
     if ($LASTEXITCODE -ne 0) {
+        if (Test-WingetPackageInstalled $Id) {
+            Refresh-PathFromMachine
+            return
+        }
+
         throw "winget install failed for package $Id with exit code $LASTEXITCODE"
     }
+
+    Refresh-PathFromMachine
 }
 
 function Import-ChocolateyBin {
@@ -73,6 +104,8 @@ function Install-ChocolateyPackage {
 if ($LASTEXITCODE -ne 0) {
     throw "mise install failed with exit code $LASTEXITCODE"
 }
+
+Refresh-PathFromMachine
 
 if (-not (Test-Path ".\node_modules")) {
     & pnpm install
