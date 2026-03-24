@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
+. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
+
 function Test-CommandAvailable {
     param([string]$Name)
 
@@ -80,6 +82,8 @@ if (-not (Test-CommandAvailable "link")) {
     )
 }
 
+Import-MsvcDevShell | Out-Null
+
 if (-not (Test-CommandAvailable "dub")) {
     Install-WingetPackage -Id "Dlang.DMD"
 }
@@ -94,4 +98,13 @@ Failed to install LDC automatically.
 Install an LDC distribution that provides both ldc2 and ldc-build-runtime, then rerun the command.
 "@
     }
+}
+
+if (-not (Test-CommandAvailable "link")) {
+    throw "Visual Studio Build Tools were installed, but link.exe is still not available in the current environment. Open a new shell or verify the VC++ workload installation."
+}
+
+& cargo xwin env --target x86_64-pc-windows-msvc | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "cargo xwin env --target x86_64-pc-windows-msvc failed with exit code $LASTEXITCODE"
 }

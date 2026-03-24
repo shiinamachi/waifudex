@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
+. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
+
 $root = Split-Path -Parent $PSScriptRoot
 $driveName = $null
 $rootPath = $root
@@ -28,6 +30,7 @@ try {
     Set-Location -LiteralPath $rootPath
 
     & .\scripts\ensure-windows-host-build-env.ps1
+    Import-MsvcDevShell | Out-Null
     node .\scripts\sync-app-version.mjs
     node .\scripts\generate-dependency-inventory.mjs
     & .\scripts\build-inochi2d-windows.ps1

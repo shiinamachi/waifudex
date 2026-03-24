@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
+. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
+
 function Test-CommandAvailable {
     param([string]$Name)
 
@@ -60,6 +62,8 @@ Write-Host "Running: mise run setup:windows-host-build"
 if ($LASTEXITCODE -ne 0) {
     throw "mise run setup:windows-host-build failed with exit code $LASTEXITCODE"
 }
+
+Import-MsvcDevShell | Out-Null
 
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -gt 0) {
