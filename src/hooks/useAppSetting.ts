@@ -6,16 +6,23 @@ const APP_SETTINGS_CHANGED_EVENT = "waifudex://app-settings-changed";
 const GET_APP_SETTINGS_COMMAND = "get_app_settings";
 const UPDATE_APP_SETTINGS_COMMAND = "update_app_settings_command";
 
+export interface CharacterWindowPosition {
+  x: number;
+  y: number;
+}
+
 export interface AppSettings {
   alwaysOnTop: boolean;
   characterScale: number;
   displayMonitorId: string | null;
+  characterWindowPosition: CharacterWindowPosition | null;
 }
 
 export interface AppSettingsUpdate {
   alwaysOnTop?: boolean;
   characterScale?: number;
   displayMonitorId?: string | null;
+  characterWindowPosition?: CharacterWindowPosition | null;
 }
 
 interface AppSettingsStoreSnapshot {
@@ -27,6 +34,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   alwaysOnTop: true,
   characterScale: 1.0,
   displayMonitorId: null,
+  characterWindowPosition: null,
 };
 
 let snapshot: AppSettingsStoreSnapshot = {

@@ -12,11 +12,11 @@ export const previewContainer = style({
 
 export const characterArea = style({
   position: "absolute",
-  bottom: 0,
-  right: "10%",
   border: `2px dashed ${tokens.colorBrandStroke1}`,
   backgroundColor: tokens.colorBrandBackground2,
   borderRadius: tokens.borderRadiusSmall,
+  touchAction: "none",
+  userSelect: "none",
 });
 
 export const monitorLabel = style({

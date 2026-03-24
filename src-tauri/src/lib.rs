@@ -28,7 +28,8 @@ pub fn run() {
             runtime_state::get_runtime_bootstrap,
             app_settings::get_app_settings,
             app_settings::update_app_settings_command,
-            mascot_window::get_display_monitors
+            mascot_window::get_display_monitors,
+            mascot_window::move_character_window_command
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

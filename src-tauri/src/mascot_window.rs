@@ -1,9 +1,11 @@
 #[cfg(windows)]
-use std::io;
 #[cfg(windows)]
 use std::collections::BTreeMap;
+#[cfg(windows)]
+use std::io;
 use std::sync::Mutex;
 
+use crate::app_settings::CharacterWindowPosition;
 use crate::contracts::DisplayMonitorOption;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -14,6 +16,12 @@ const MAX_WINDOW_SIZE: u32 = 1200;
 pub struct MascotWindowSize {
     pub width: u32,
     pub height: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MascotWindowPlacement {
+    pub monitor_id: Option<String>,
+    pub position: Option<CharacterWindowPosition>,
 }
 
 #[cfg_attr(not(any(test, windows)), allow(dead_code))]
@@ -41,7 +49,8 @@ struct NativeMascotWindow {
 
 #[cfg(windows)]
 struct NativeMascotWindowContext {
-    on_monitor_changed: Box<dyn Fn(Option<String>) + Send + Sync>,
+    on_window_pos_changed:
+        Box<dyn Fn(Option<String>, Option<CharacterWindowPosition>) + Send + Sync>,
 }
 
 #[derive(Debug)]
@@ -301,7 +310,9 @@ pub fn available_display_monitors<R: Runtime>(
     }
 }
 
-pub fn current_display_monitor_id<R: Runtime>(_app: &AppHandle<R>) -> tauri::Result<Option<String>> {
+pub fn current_display_monitor_id<R: Runtime>(
+    _app: &AppHandle<R>,
+) -> tauri::Result<Option<String>> {
     #[cfg(windows)]
     {
         if let Some(state) = _app.try_state::<MascotWindowState>() {
@@ -321,10 +332,33 @@ pub fn current_display_monitor_id<R: Runtime>(_app: &AppHandle<R>) -> tauri::Res
     Ok(None)
 }
 
+pub fn current_window_position<R: Runtime>(
+    _app: &AppHandle<R>,
+) -> tauri::Result<Option<CharacterWindowPosition>> {
+    #[cfg(windows)]
+    {
+        if let Some(state) = _app.try_state::<MascotWindowState>() {
+            let window = *state
+                .window
+                .lock()
+                .expect("mascot window state mutex poisoned");
+            if let Some(window) = window {
+                return current_window_position_for_hwnd(
+                    window.hwnd as windows_sys::Win32::Foundation::HWND,
+                )
+                .map(Some)
+                .map_err(tauri::Error::from);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 pub fn move_to_monitor<R: Runtime>(
     _app: &AppHandle<R>,
     requested_monitor_id: Option<&str>,
-) -> tauri::Result<Option<String>> {
+) -> tauri::Result<MascotWindowPlacement> {
     #[cfg(windows)]
     {
         if let Some(state) = _app.try_state::<MascotWindowState>() {
@@ -343,12 +377,79 @@ pub fn move_to_monitor<R: Runtime>(
         }
     }
 
-    Ok(requested_monitor_id.map(str::to_string))
+    Ok(MascotWindowPlacement {
+        monitor_id: requested_monitor_id.map(str::to_string),
+        position: None,
+    })
+}
+
+pub fn restore_window_placement<R: Runtime>(
+    _app: &AppHandle<R>,
+    requested_monitor_id: Option<&str>,
+    saved_position: Option<CharacterWindowPosition>,
+) -> tauri::Result<MascotWindowPlacement> {
+    #[cfg(windows)]
+    {
+        if let Some(state) = _app.try_state::<MascotWindowState>() {
+            let window = *state
+                .window
+                .lock()
+                .expect("mascot window state mutex poisoned");
+            if let Some(window) = window {
+                return restore_window_placement_windows(
+                    &state,
+                    window.hwnd as windows_sys::Win32::Foundation::HWND,
+                    requested_monitor_id,
+                    saved_position,
+                )
+                .map_err(tauri::Error::from);
+            }
+        }
+    }
+
+    Ok(MascotWindowPlacement {
+        monitor_id: requested_monitor_id.map(str::to_string),
+        position: saved_position,
+    })
+}
+
+pub fn move_to_position<R: Runtime>(
+    _app: &AppHandle<R>,
+    requested_position: CharacterWindowPosition,
+    requested_monitor_id: Option<&str>,
+) -> tauri::Result<MascotWindowPlacement> {
+    #[cfg(windows)]
+    {
+        return run_move_to_position_on_main_thread(
+            _app,
+            requested_position,
+            requested_monitor_id.map(str::to_string),
+        );
+    }
+
+    Ok(MascotWindowPlacement {
+        monitor_id: requested_monitor_id.map(str::to_string),
+        position: Some(requested_position),
+    })
 }
 
 #[tauri::command]
 pub fn get_display_monitors(app: AppHandle) -> Result<Vec<DisplayMonitorOption>, String> {
     available_display_monitors(&app).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn move_character_window_command(app: AppHandle, x: i32, y: i32) -> Result<(), String> {
+    eprintln!("waifudex move_character_window_command: x={x} y={y}");
+    crate::app_settings::update_app_settings(
+        &app,
+        crate::app_settings::AppSettingsUpdate {
+            character_window_position: Some(CharacterWindowPosition { x, y }),
+            ..Default::default()
+        },
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 pub fn present_frame<R: Runtime>(
@@ -385,6 +486,7 @@ pub fn present_frame<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_settings::CharacterWindowPosition;
 
     #[test]
     fn mascot_window_state_defaults_to_always_on_top() {
@@ -451,11 +553,146 @@ mod tests {
         );
     }
 
+    #[test]
+    fn clamp_window_position_keeps_window_inside_monitor_work_area() {
+        let position = clamp_window_position_to_work_area(
+            CharacterWindowPosition { x: 1_850, y: 900 },
+            MascotWindowSize {
+                width: 420,
+                height: 720,
+            },
+            MonitorWorkArea {
+                left: 0,
+                top: 0,
+                right: 1_920,
+                bottom: 1_080,
+            },
+        );
+
+        assert_eq!(position, CharacterWindowPosition { x: 1_500, y: 360 });
+    }
+
+    #[test]
+    fn resolve_restored_window_position_keeps_saved_position_on_same_monitor() {
+        let monitors = vec![
+            test_monitor("\\\\.\\DISPLAY1", true),
+            DisplayMonitorSnapshot {
+                option: DisplayMonitorOption {
+                    id: "\\\\.\\DISPLAY2".to_string(),
+                    label: "\\\\.\\DISPLAY2".to_string(),
+                    work_area_left: 1_920,
+                    work_area_top: 0,
+                    work_area_width: 1_920,
+                    work_area_height: 1_080,
+                },
+                work_area: MonitorWorkArea {
+                    left: 1_920,
+                    top: 0,
+                    right: 3_840,
+                    bottom: 1_080,
+                },
+                is_primary: false,
+            },
+        ];
+
+        let position = resolve_restored_window_position(
+            Some("\\\\.\\DISPLAY2"),
+            Some(CharacterWindowPosition { x: 2_400, y: 200 }),
+            MascotWindowSize {
+                width: 420,
+                height: 720,
+            },
+            &monitors,
+        )
+        .expect("expected a restored position");
+
+        assert_eq!(position, CharacterWindowPosition { x: 2_400, y: 200 });
+    }
+
+    #[test]
+    fn resolve_restored_window_position_recenters_for_new_monitor() {
+        let monitors = vec![
+            test_monitor("\\\\.\\DISPLAY1", true),
+            DisplayMonitorSnapshot {
+                option: DisplayMonitorOption {
+                    id: "\\\\.\\DISPLAY2".to_string(),
+                    label: "\\\\.\\DISPLAY2".to_string(),
+                    work_area_left: 1_920,
+                    work_area_top: 0,
+                    work_area_width: 1_920,
+                    work_area_height: 1_080,
+                },
+                work_area: MonitorWorkArea {
+                    left: 1_920,
+                    top: 0,
+                    right: 3_840,
+                    bottom: 1_080,
+                },
+                is_primary: false,
+            },
+        ];
+
+        let position = resolve_restored_window_position(
+            Some("\\\\.\\DISPLAY1"),
+            Some(CharacterWindowPosition { x: 2_400, y: 200 }),
+            MascotWindowSize {
+                width: 420,
+                height: 720,
+            },
+            &monitors,
+        )
+        .expect("expected a restored position");
+
+        assert_eq!(position, CharacterWindowPosition { x: 750, y: 180 });
+    }
+
+    #[test]
+    fn clamp_requested_window_position_keeps_requested_position_when_it_fits() {
+        let position = clamp_requested_window_position(
+            CharacterWindowPosition { x: 2400, y: 180 },
+            MascotWindowSize {
+                width: 420,
+                height: 720,
+            },
+            MonitorWorkArea {
+                left: 1920,
+                top: 0,
+                right: 3840,
+                bottom: 1080,
+            },
+        );
+
+        assert_eq!(position, CharacterWindowPosition { x: 2400, y: 180 });
+    }
+
+    #[test]
+    fn clamp_requested_window_position_clamps_to_monitor_edges() {
+        let position = clamp_requested_window_position(
+            CharacterWindowPosition { x: 3800, y: 900 },
+            MascotWindowSize {
+                width: 420,
+                height: 720,
+            },
+            MonitorWorkArea {
+                left: 1920,
+                top: 0,
+                right: 3840,
+                bottom: 1080,
+            },
+        );
+
+        assert_eq!(position, CharacterWindowPosition { x: 3420, y: 360 });
+    }
+
     fn test_monitor(id: &str, is_primary: bool) -> DisplayMonitorSnapshot {
         DisplayMonitorSnapshot {
             option: DisplayMonitorOption {
                 id: id.to_string(),
                 label: id.to_string(),
+                work_area_left: 0,
+                work_area_top: 0,
+                work_area_width: 1_920,
+                work_area_height: 1_080,
             },
             work_area: MonitorWorkArea {
                 left: 0,
@@ -510,6 +747,73 @@ fn place_window_in_work_area(size: MascotWindowSize, work_area: MonitorWorkArea)
     )
 }
 
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+fn clamp_window_position_to_work_area(
+    position: CharacterWindowPosition,
+    size: MascotWindowSize,
+    work_area: MonitorWorkArea,
+) -> CharacterWindowPosition {
+    let max_x = work_area.left + ((work_area.right - work_area.left) - size.width as i32).max(0);
+    let max_y = work_area.top + ((work_area.bottom - work_area.top) - size.height as i32).max(0);
+
+    CharacterWindowPosition {
+        x: position.x.clamp(work_area.left, max_x),
+        y: position.y.clamp(work_area.top, max_y),
+    }
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+fn clamp_requested_window_position(
+    position: CharacterWindowPosition,
+    size: MascotWindowSize,
+    work_area: MonitorWorkArea,
+) -> CharacterWindowPosition {
+    clamp_window_position_to_work_area(position, size, work_area)
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+fn monitor_id_for_position(
+    position: CharacterWindowPosition,
+    monitors: &[DisplayMonitorSnapshot],
+) -> Option<String> {
+    monitors
+        .iter()
+        .find(|monitor| {
+            position.x >= monitor.work_area.left
+                && position.x < monitor.work_area.right
+                && position.y >= monitor.work_area.top
+                && position.y < monitor.work_area.bottom
+        })
+        .map(|monitor| monitor.option.id.clone())
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+fn resolve_restored_window_position(
+    target_monitor_id: Option<&str>,
+    saved_position: Option<CharacterWindowPosition>,
+    size: MascotWindowSize,
+    monitors: &[DisplayMonitorSnapshot],
+) -> Option<CharacterWindowPosition> {
+    let target_monitor_id = target_monitor_id?;
+    let target_monitor = monitors
+        .iter()
+        .find(|monitor| monitor.option.id == target_monitor_id)?;
+
+    if let Some(saved_position) = saved_position {
+        if monitor_id_for_position(saved_position, monitors).as_deref() == Some(target_monitor_id) {
+            return Some(clamp_window_position_to_work_area(
+                saved_position,
+                size,
+                target_monitor.work_area,
+            ));
+        }
+    }
+
+    let (x, y) = place_window_in_work_area(size, target_monitor.work_area);
+    Some(CharacterWindowPosition { x, y })
+}
+
+#[cfg_attr(not(any(test, windows)), allow(dead_code))]
 fn display_monitor_label(
     device_name: &str,
     friendly_name: Option<&str>,
@@ -519,7 +823,11 @@ fn display_monitor_label(
     let base = friendly_name
         .map(str::trim)
         .filter(|name| !name.is_empty())
-        .or_else(|| fallback_label.map(str::trim).filter(|name| !name.is_empty()))
+        .or_else(|| {
+            fallback_label
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+        })
         .unwrap_or(device_name);
 
     if is_primary {
@@ -534,16 +842,18 @@ fn move_window_to_monitor_windows(
     state: &MascotWindowState,
     hwnd: windows_sys::Win32::Foundation::HWND,
     requested_monitor_id: Option<&str>,
-) -> io::Result<Option<String>> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-    };
+) -> io::Result<MascotWindowPlacement> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER};
 
     let monitors = list_display_monitors_windows()?;
     let current_monitor_id = current_monitor_id_for_hwnd(hwnd)?;
+    let current_position = current_window_position_for_hwnd(hwnd)?;
 
     if requested_monitor_id.is_none() {
-        return Ok(current_monitor_id);
+        return Ok(MascotWindowPlacement {
+            monitor_id: current_monitor_id,
+            position: Some(current_position),
+        });
     }
 
     let Some(target_monitor_id) = resolve_monitor_id(
@@ -551,40 +861,177 @@ fn move_window_to_monitor_windows(
         current_monitor_id.as_deref(),
         &monitors,
     ) else {
-        return Ok(None);
+        return Ok(MascotWindowPlacement {
+            monitor_id: None,
+            position: Some(current_position),
+        });
     };
 
     if current_monitor_id.as_deref() == Some(target_monitor_id.as_str()) {
-        return Ok(Some(target_monitor_id));
+        return Ok(MascotWindowPlacement {
+            monitor_id: Some(target_monitor_id),
+            position: Some(current_position),
+        });
     }
 
     let Some(target_monitor) = monitors
         .iter()
         .find(|monitor| monitor.option.id == target_monitor_id)
     else {
-        return Ok(current_monitor_id);
+        return Ok(MascotWindowPlacement {
+            monitor_id: current_monitor_id,
+            position: Some(current_position),
+        });
     };
 
     let (x, y) = place_window_in_work_area(state.size(), target_monitor.work_area);
-    state.set_monitor_move_suppressed(true);
-    let result = unsafe {
-        SetWindowPos(
-            hwnd,
-            std::ptr::null_mut(),
-            x,
-            y,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-        )
-    };
-    state.set_monitor_move_suppressed(false);
+    set_window_position_windows(
+        state,
+        hwnd,
+        CharacterWindowPosition { x, y },
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+    )?;
 
-    if result == 0 {
-        return Err(io::Error::last_os_error());
+    Ok(MascotWindowPlacement {
+        monitor_id: Some(target_monitor_id),
+        position: Some(current_window_position_for_hwnd(hwnd)?),
+    })
+}
+
+#[cfg(windows)]
+fn move_window_to_position_windows(
+    state: &MascotWindowState,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    requested_position: CharacterWindowPosition,
+    requested_monitor_id: Option<&str>,
+) -> io::Result<MascotWindowPlacement> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER};
+
+    let monitors = list_display_monitors_windows()?;
+    let current_monitor_id = current_monitor_id_for_hwnd(hwnd)?;
+    let inferred_monitor_id = monitor_id_for_position(requested_position, &monitors);
+    let resolved_monitor_id = resolve_monitor_id(
+        requested_monitor_id.or(inferred_monitor_id.as_deref()),
+        current_monitor_id.as_deref(),
+        &monitors,
+    );
+
+    let Some(target_monitor_id) = resolved_monitor_id else {
+        return Ok(MascotWindowPlacement {
+            monitor_id: current_monitor_id,
+            position: Some(current_window_position_for_hwnd(hwnd)?),
+        });
+    };
+
+    let Some(target_monitor) = monitors
+        .iter()
+        .find(|monitor| monitor.option.id == target_monitor_id)
+    else {
+        return Ok(MascotWindowPlacement {
+            monitor_id: current_monitor_id,
+            position: Some(current_window_position_for_hwnd(hwnd)?),
+        });
+    };
+
+    let clamped_position =
+        clamp_requested_window_position(requested_position, state.size(), target_monitor.work_area);
+    set_window_position_windows(
+        state,
+        hwnd,
+        clamped_position,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+    )?;
+
+    Ok(MascotWindowPlacement {
+        monitor_id: Some(target_monitor_id),
+        position: Some(current_window_position_for_hwnd(hwnd)?),
+    })
+}
+
+#[cfg(windows)]
+fn run_move_to_position_on_main_thread<R: Runtime>(
+    app: &AppHandle<R>,
+    requested_position: CharacterWindowPosition,
+    requested_monitor_id: Option<String>,
+) -> tauri::Result<MascotWindowPlacement> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let app_handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| -> io::Result<MascotWindowPlacement> {
+            let Some(state) = app_handle.try_state::<MascotWindowState>() else {
+                return Ok(MascotWindowPlacement {
+                    monitor_id: requested_monitor_id,
+                    position: Some(requested_position),
+                });
+            };
+            let window = *state
+                .window
+                .lock()
+                .expect("mascot window state mutex poisoned");
+            let Some(window) = window else {
+                return Ok(MascotWindowPlacement {
+                    monitor_id: requested_monitor_id,
+                    position: Some(requested_position),
+                });
+            };
+
+            move_window_to_position_windows(
+                &state,
+                window.hwnd as windows_sys::Win32::Foundation::HWND,
+                requested_position,
+                requested_monitor_id.as_deref(),
+            )
+        })();
+        let _ = tx.send(result);
+    })?;
+
+    rx.recv()
+        .map_err(|error| tauri::Error::from(io::Error::other(error.to_string())))?
+        .map_err(tauri::Error::from)
+}
+
+#[cfg(windows)]
+fn restore_window_placement_windows(
+    state: &MascotWindowState,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    requested_monitor_id: Option<&str>,
+    saved_position: Option<CharacterWindowPosition>,
+) -> io::Result<MascotWindowPlacement> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER};
+
+    let monitors = list_display_monitors_windows()?;
+    let current_monitor_id = current_monitor_id_for_hwnd(hwnd)?;
+    let preferred_monitor_id = requested_monitor_id
+        .map(str::to_string)
+        .or_else(|| {
+            saved_position.and_then(|position| monitor_id_for_position(position, &monitors))
+        })
+        .or(current_monitor_id.clone());
+    let resolved_monitor_id = resolve_monitor_id(
+        preferred_monitor_id.as_deref(),
+        current_monitor_id.as_deref(),
+        &monitors,
+    );
+    let position = resolve_restored_window_position(
+        resolved_monitor_id.as_deref(),
+        saved_position,
+        state.size(),
+        &monitors,
+    );
+
+    if let Some(position) = position {
+        set_window_position_windows(
+            state,
+            hwnd,
+            position,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        )?;
     }
 
-    Ok(Some(target_monitor_id))
+    Ok(MascotWindowPlacement {
+        monitor_id: resolved_monitor_id,
+        position: current_window_position_for_hwnd(hwnd).ok(),
+    })
 }
 
 #[cfg(windows)]
@@ -660,6 +1107,12 @@ fn monitor_snapshot_from_handle(
         option: DisplayMonitorOption {
             id: device_name,
             label,
+            work_area_left: info.monitorInfo.rcWork.left,
+            work_area_top: info.monitorInfo.rcWork.top,
+            work_area_width: (info.monitorInfo.rcWork.right - info.monitorInfo.rcWork.left).max(0)
+                as u32,
+            work_area_height: (info.monitorInfo.rcWork.bottom - info.monitorInfo.rcWork.top).max(0)
+                as u32,
         },
         work_area: MonitorWorkArea {
             left: info.monitorInfo.rcWork.left,
@@ -686,6 +1139,55 @@ fn current_monitor_id_for_hwnd(
 }
 
 #[cfg(windows)]
+fn current_window_position_for_hwnd(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+) -> io::Result<CharacterWindowPosition> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+
+    let mut rect = RECT::default();
+    let result = unsafe { GetWindowRect(hwnd, &mut rect) };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(CharacterWindowPosition {
+        x: rect.left,
+        y: rect.top,
+    })
+}
+
+#[cfg(windows)]
+fn set_window_position_windows(
+    state: &MascotWindowState,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    position: CharacterWindowPosition,
+    flags: u32,
+) -> io::Result<()> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::SetWindowPos;
+
+    state.set_monitor_move_suppressed(true);
+    let result = unsafe {
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            position.x,
+            position.y,
+            0,
+            0,
+            flags,
+        )
+    };
+    state.set_monitor_move_suppressed(false);
+
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
 fn wide_nul_terminated_to_string(raw: &[u16]) -> String {
     let len = raw.iter().position(|ch| *ch == 0).unwrap_or(raw.len());
     String::from_utf16_lossy(&raw[..len])
@@ -696,12 +1198,12 @@ fn display_monitor_friendly_names_windows() -> io::Result<BTreeMap<String, Strin
     use windows_sys::Win32::{
         Devices::Display::{
             DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig,
-            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
-            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS,
-            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
             DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
-            DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_SOURCE_DEVICE_NAME,
-            DISPLAYCONFIG_TARGET_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+            DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO,
+            DISPLAYCONFIG_SOURCE_DEVICE_NAME, DISPLAYCONFIG_TARGET_DEVICE_NAME,
+            QDC_ONLY_ACTIVE_PATHS,
         },
         Foundation::WIN32_ERROR,
     };
@@ -774,9 +1276,9 @@ fn display_monitor_friendly_names_windows() -> io::Result<BTreeMap<String, Strin
 
         if !source_device_name.is_empty() {
             if let Some(resolved_label) = resolved_label {
-            friendly_names
-                .entry(source_device_name)
-                .or_insert(resolved_label);
+                friendly_names
+                    .entry(source_device_name)
+                    .or_insert(resolved_label);
             }
         }
     }
@@ -886,14 +1388,18 @@ fn attach_window_context<R: Runtime>(
 
     let app_handle = app.clone();
     let context = Box::new(NativeMascotWindowContext {
-        on_monitor_changed: Box::new(move |monitor_id| {
+        on_window_pos_changed: Box::new(move |monitor_id, position| {
             if let Some(state) = app_handle.try_state::<MascotWindowState>() {
                 if state.is_monitor_move_suppressed() {
                     return;
                 }
             }
 
-            let _ = crate::app_settings::sync_display_monitor_from_window(&app_handle, monitor_id);
+            let _ = crate::app_settings::sync_character_window_placement_from_window(
+                &app_handle,
+                monitor_id,
+                position,
+            );
         }),
     });
 
@@ -932,7 +1438,8 @@ unsafe extern "system" fn mascot_window_proc(
     if message == WM_WINDOWPOSCHANGED {
         if let Some(context) = window_context(hwnd) {
             let monitor_id = current_monitor_id_for_hwnd(hwnd).ok().flatten();
-            (context.on_monitor_changed)(monitor_id);
+            let position = current_window_position_for_hwnd(hwnd).ok();
+            (context.on_window_pos_changed)(monitor_id, position);
         }
     }
 

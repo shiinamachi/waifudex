@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Caption1,
@@ -10,7 +10,10 @@ import {
 
 import SettingItem from "../../../components/settings/SettingItem";
 import MonitorPreview from "../../../components/settings/MonitorPreview";
-import { useAppSetting } from "../../../hooks/useAppSetting";
+import {
+  type CharacterWindowPosition,
+  useAppSetting,
+} from "../../../hooks/useAppSetting";
 
 const BASE_WIDTH = 420;
 const BASE_HEIGHT = 720;
@@ -18,10 +21,15 @@ const MIN_SCALE = 0.5;
 const MAX_SCALE = 1.5;
 const SCALE_STEP = 0.1;
 const GET_DISPLAY_MONITORS_COMMAND = "get_display_monitors";
+const UPDATE_APP_SETTINGS_COMMAND = "update_app_settings_command";
 
 interface DisplayMonitorOption {
   id: string;
   label: string;
+  workAreaLeft: number;
+  workAreaTop: number;
+  workAreaWidth: number;
+  workAreaHeight: number;
 }
 
 export default function SettingsDisplayTab() {
@@ -34,16 +42,23 @@ export default function SettingsDisplayTab() {
   } = useAppSetting("displayMonitorId");
   const { value: characterScale, setValue: setCharacterScale } =
     useAppSetting("characterScale");
+  const { value: characterWindowPosition } = useAppSetting(
+    "characterWindowPosition",
+  );
 
   const [previewScale, setPreviewScale] = useState<number | null>(null);
   const [monitorOptions, setMonitorOptions] = useState<DisplayMonitorOption[]>(
     [],
   );
+  const inFlightMoveRef = useRef(false);
+  const queuedMoveRef = useRef<CharacterWindowPosition | null>(null);
+  const lastQueuedMoveRef = useRef<string | null>(null);
 
   const displayScale = previewScale ?? characterScale;
   const selectedMonitor = monitorOptions.find(
     (monitor) => monitor.id === displayMonitorId,
   );
+  const previewMonitor = selectedMonitor ?? null;
   const selectedMonitorValue = selectedMonitor?.label ?? displayMonitorId ?? "";
   const selectedMonitorLabel = selectedMonitor?.label ?? displayMonitorId ?? null;
   const displayWidth = Math.round(BASE_WIDTH * displayScale);
@@ -72,6 +87,42 @@ export default function SettingsDisplayTab() {
       cancelled = true;
     };
   }, []);
+
+  function queueCharacterWindowMove(position: CharacterWindowPosition) {
+    const key = `${position.x}:${position.y}`;
+    if (lastQueuedMoveRef.current === key) {
+      return;
+    }
+
+    lastQueuedMoveRef.current = key;
+    queuedMoveRef.current = position;
+    if (inFlightMoveRef.current) {
+      return;
+    }
+
+    inFlightMoveRef.current = true;
+    void (async () => {
+      try {
+        while (queuedMoveRef.current) {
+          const nextPosition = queuedMoveRef.current;
+          queuedMoveRef.current = null;
+          await invoke(UPDATE_APP_SETTINGS_COMMAND, {
+            update: {
+              characterWindowPosition: nextPosition,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("failed to move character window", error);
+        lastQueuedMoveRef.current = null;
+      } finally {
+        inFlightMoveRef.current = false;
+        if (queuedMoveRef.current) {
+          queueCharacterWindowMove(queuedMoveRef.current);
+        }
+      }
+    })();
+  }
 
   return (
     <div
@@ -124,8 +175,8 @@ export default function SettingsDisplayTab() {
       </SettingItem>
 
       <SettingItem
-        title="Character size"
-        description="Adjust the size of the character window"
+        title="Character size and position"
+        description="Adjust the character window size and drag the preview to reposition it"
       >
         <div
           style={{
@@ -167,7 +218,19 @@ export default function SettingsDisplayTab() {
             {displayWidth} x {displayHeight}
           </Caption1>
           <MonitorPreview
-            monitorName={selectedMonitorLabel}
+            monitor={
+              previewMonitor
+                ? {
+                    label: selectedMonitorLabel ?? previewMonitor.label,
+                    workAreaLeft: previewMonitor.workAreaLeft,
+                    workAreaTop: previewMonitor.workAreaTop,
+                    workAreaWidth: previewMonitor.workAreaWidth,
+                    workAreaHeight: previewMonitor.workAreaHeight,
+                  }
+                : null
+            }
+            onMoveCharacterWindow={queueCharacterWindowMove}
+            position={characterWindowPosition}
             scale={displayScale}
           />
         </div>

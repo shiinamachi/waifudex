@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { currentMonitor } from "@tauri-apps/api/window";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import {
   characterArea,
@@ -8,57 +7,141 @@ import {
   previewContainer,
 } from "./monitor-preview.css";
 import {
+  clampPreviewCharacterOrigin,
+  computeMonitorPreviewLayout,
+  previewToNativePosition,
+  type MonitorPreviewMonitor,
+} from "./monitorPreviewLayout";
+import {
   getMonitorPreviewLabel,
   getMonitorPreviewResolutionLabel,
 } from "./monitorPreviewLabel";
+import type { CharacterWindowPosition } from "../../hooks/useAppSetting";
 
 const PREVIEW_WIDTH = 280;
 const BASE_WIDTH = 420;
 const BASE_HEIGHT = 720;
 
 interface MonitorPreviewProps {
-  monitorName?: string | null;
+  monitor?: (MonitorPreviewMonitor & {
+    label: string;
+  }) | null;
   scale: number;
+  position?: CharacterWindowPosition | null;
+  onMoveCharacterWindow?: (position: CharacterWindowPosition) => void;
 }
 
 export default function MonitorPreview({
-  monitorName,
+  monitor,
   scale,
+  position,
+  onMoveCharacterWindow,
 }: MonitorPreviewProps) {
-  const [monitorSize, setMonitorSize] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  const pointerOffsetRef = useRef({ x: 0, y: 0 });
+  const [dragPosition, setDragPosition] = useState<CharacterWindowPosition | null>(
+    null,
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const activeMonitor = monitor;
 
   useEffect(() => {
-    currentMonitor().then((monitor) => {
-      if (monitor) {
-        setMonitorSize({
-          width: monitor.size.width,
-          height: monitor.size.height,
-        });
-      }
-    });
-  }, []);
+    if (
+      dragPosition &&
+      position &&
+      dragPosition.x === position.x &&
+      dragPosition.y === position.y
+    ) {
+      setDragPosition(null);
+    }
+  }, [dragPosition, position]);
 
-  if (!monitorSize) {
+  if (!activeMonitor) {
     return null;
   }
 
-  const previewScale = PREVIEW_WIDTH / monitorSize.width;
-  const previewHeight = monitorSize.height * previewScale;
-  const charWidth = BASE_WIDTH * scale * previewScale;
-  const charHeight = BASE_HEIGHT * scale * previewScale;
-  const monitorNameLabel = getMonitorPreviewLabel(monitorName);
+  const resolvedMonitor = activeMonitor;
+
+  const layout = computeMonitorPreviewLayout({
+    previewWidth: PREVIEW_WIDTH,
+    baseWidth: BASE_WIDTH,
+    baseHeight: BASE_HEIGHT,
+    scale,
+    monitor: resolvedMonitor,
+    position: dragPosition ?? position ?? null,
+  });
+  const monitorNameLabel = getMonitorPreviewLabel(resolvedMonitor.label);
   const monitorResolutionLabelText = getMonitorPreviewResolutionLabel(
-    monitorSize.width,
-    monitorSize.height,
+    resolvedMonitor.workAreaWidth,
+    resolvedMonitor.workAreaHeight,
   );
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!previewRef.current || !onMoveCharacterWindow) {
+      return;
+    }
+
+    const rect = previewRef.current.getBoundingClientRect();
+    pointerIdRef.current = event.pointerId;
+    pointerOffsetRef.current = {
+      x: event.clientX - rect.left - layout.characterLeft,
+      y: event.clientY - rect.top - layout.characterTop,
+    };
+    setIsDragging(true);
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (
+      !previewRef.current ||
+      !onMoveCharacterWindow ||
+      pointerIdRef.current !== event.pointerId
+    ) {
+      return;
+    }
+
+    const rect = previewRef.current.getBoundingClientRect();
+    const origin = clampPreviewCharacterOrigin({
+      previewWidth: PREVIEW_WIDTH,
+      previewHeight: layout.previewHeight,
+      characterWidth: layout.characterWidth,
+      characterHeight: layout.characterHeight,
+      previewLeft: event.clientX - rect.left - pointerOffsetRef.current.x,
+      previewTop: event.clientY - rect.top - pointerOffsetRef.current.y,
+    });
+    const nextPosition = previewToNativePosition({
+      previewWidth: PREVIEW_WIDTH,
+      baseWidth: BASE_WIDTH,
+      baseHeight: BASE_HEIGHT,
+      scale,
+      monitor: resolvedMonitor,
+      previewLeft: origin.left,
+      previewTop: origin.top,
+    });
+
+    setDragPosition(nextPosition);
+    onMoveCharacterWindow(nextPosition);
+  }
+
+  function finishDrag(event: PointerEvent<HTMLDivElement>) {
+    if (pointerIdRef.current !== event.pointerId) {
+      return;
+    }
+
+    pointerIdRef.current = null;
+    setIsDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
 
   return (
     <div
+      ref={previewRef}
       className={previewContainer}
-      style={{ width: PREVIEW_WIDTH, height: previewHeight }}
+      style={{ width: PREVIEW_WIDTH, height: layout.previewHeight }}
     >
       <span className={monitorResolutionLabel}>{monitorResolutionLabelText}</span>
       {monitorNameLabel ? (
@@ -66,7 +149,17 @@ export default function MonitorPreview({
       ) : null}
       <div
         className={characterArea}
-        style={{ width: charWidth, height: charHeight }}
+        onPointerCancel={finishDrag}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+        style={{
+          cursor: isDragging ? "grabbing" : "grab",
+          left: layout.characterLeft,
+          top: layout.characterTop,
+          width: layout.characterWidth,
+          height: layout.characterHeight,
+        }}
       />
     </div>
   );

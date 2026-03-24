@@ -7,4 +7,8 @@ use ts_rs::TS;
 pub struct DisplayMonitorOption {
     pub id: String,
     pub label: String,
+    pub work_area_left: i32,
+    pub work_area_top: i32,
+    pub work_area_width: u32,
+    pub work_area_height: u32,
 }
