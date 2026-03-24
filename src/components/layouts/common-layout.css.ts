@@ -9,18 +9,21 @@ globalStyle("html", {
   height: "100%",
   background: "Canvas",
   color: "CanvasText",
+  overflow: "hidden",
 });
 
 globalStyle("body", {
   height: "100%",
   background: "Canvas",
   color: "CanvasText",
+  overflow: "hidden",
   userSelect: "none",
   WebkitUserSelect: "none",
 });
 
 globalStyle("#app", {
   height: "100%",
+  overflow: "hidden",
 });
 
 globalStyle("input, textarea, [contenteditable=\"true\"]", {
