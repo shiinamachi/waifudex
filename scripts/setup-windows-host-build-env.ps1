@@ -26,6 +26,20 @@ function Refresh-PathFromMachine {
     $env:PATH = ($segments -join ";")
 }
 
+function Import-LlvmBin {
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles} "LLVM\bin"),
+        (Join-Path ${env:ProgramFiles(x86)} "LLVM\bin"),
+        (Join-Path $env:LOCALAPPDATA "Programs\LLVM\bin")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    foreach ($candidate in $candidates) {
+        if (-not ($env:PATH -split ";" | Where-Object { $_ -eq $candidate })) {
+            $env:PATH = "$candidate;$env:PATH"
+        }
+    }
+}
+
 function Test-WingetPackageInstalled {
     param([string]$Id)
 
@@ -108,6 +122,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Refresh-PathFromMachine
+Import-LlvmBin
 
 if (-not (Test-Path ".\node_modules")) {
     & pnpm install
@@ -138,6 +153,7 @@ if (-not (Test-CommandAvailable "ninja")) {
 if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-lib") -or -not (Test-CommandAvailable "lld-link")) {
     Install-WingetPackage -Id "LLVM.LLVM"
     Refresh-PathFromMachine
+    Import-LlvmBin
 }
 
 if (-not (Test-CommandAvailable "link.exe")) {

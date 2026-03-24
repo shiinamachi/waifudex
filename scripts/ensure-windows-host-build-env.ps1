@@ -9,6 +9,20 @@ function Test-CommandAvailable {
     [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Import-LlvmBin {
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles} "LLVM\bin"),
+        (Join-Path ${env:ProgramFiles(x86)} "LLVM\bin"),
+        (Join-Path $env:LOCALAPPDATA "Programs\LLVM\bin")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    foreach ($candidate in $candidates) {
+        if (-not ($env:PATH -split ";" | Where-Object { $_ -eq $candidate })) {
+            $env:PATH = "$candidate;$env:PATH"
+        }
+    }
+}
+
 function Get-MissingWindowsBuildRequirements {
     $missing = [System.Collections.Generic.List[string]]::new()
 
@@ -43,6 +57,7 @@ function Get-MissingWindowsBuildRequirements {
 }
 
 Import-MsvcDevShell | Out-Null
+Import-LlvmBin
 
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -eq 0) {
@@ -66,6 +81,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Import-MsvcDevShell | Out-Null
+Import-LlvmBin
 
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -gt 0) {
