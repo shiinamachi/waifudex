@@ -254,9 +254,9 @@ $xwinDir = if ($env:XWIN_DIR) {
 }
 
 if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
-    & cargo xwin splat --output $xwinDir --target x86_64-pc-windows-msvc
+    & cargo xwin cache xwin --cross-compiler clang
     if ($LASTEXITCODE -ne 0) {
-        throw "cargo xwin splat --output $xwinDir --target x86_64-pc-windows-msvc failed with exit code $LASTEXITCODE"
+        throw "cargo xwin cache xwin --cross-compiler clang failed with exit code $LASTEXITCODE"
     }
 }
 
