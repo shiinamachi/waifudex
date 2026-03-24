@@ -85,6 +85,16 @@ function Get-MissingWindowsBuildRequirements {
         $missing.Add("node_modules")
     }
 
+    $xwinDir = if ($env:XWIN_DIR) {
+        $env:XWIN_DIR
+    } else {
+        Join-Path $env:USERPROFILE ".cache\cargo-xwin\xwin"
+    }
+
+    if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
+        $missing.Add("cargo-xwin-sysroot")
+    }
+
     return $missing
 }
 
