@@ -33,6 +33,42 @@ function Install-WingetPackage {
     }
 }
 
+function Import-ChocolateyBin {
+    $chocoBin = Join-Path $env:ProgramData "chocolatey\bin"
+    if ((Test-Path $chocoBin) -and -not ($env:PATH -split ";" | Where-Object { $_ -eq $chocoBin })) {
+        $env:PATH = "$chocoBin;$env:PATH"
+    }
+}
+
+function Ensure-Chocolatey {
+    if (Test-CommandAvailable "choco") {
+        Import-ChocolateyBin
+        return
+    }
+
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))
+
+    Import-ChocolateyBin
+
+    if (-not (Test-CommandAvailable "choco")) {
+        throw "Chocolatey installation completed, but choco is still not available in the current environment."
+    }
+}
+
+function Install-ChocolateyPackage {
+    param([string]$Name)
+
+    Ensure-Chocolatey
+    & choco install $Name -y --no-progress
+    if ($LASTEXITCODE -ne 0) {
+        throw "choco install $Name failed with exit code $LASTEXITCODE"
+    }
+
+    Import-ChocolateyBin
+}
+
 & mise install
 if ($LASTEXITCODE -ne 0) {
     throw "mise install failed with exit code $LASTEXITCODE"
@@ -92,15 +128,18 @@ if (-not (Test-CommandAvailable "dub")) {
 }
 
 if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-build-runtime")) {
-    try {
-        Install-WingetPackage -Id "LLVM.LDC"
-    }
-    catch {
-        throw @"
+    Install-ChocolateyPackage -Name "ldc"
+}
+
+if (-not (Test-CommandAvailable "dub")) {
+    Install-ChocolateyPackage -Name "dub"
+}
+
+if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-build-runtime")) {
+    throw @"
 Failed to install LDC automatically.
 Install an LDC distribution that provides both ldc2 and ldc-build-runtime, then rerun the command.
 "@
-    }
 }
 
 if (-not (Test-CommandAvailable "link.exe")) {
