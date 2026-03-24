@@ -84,23 +84,29 @@ function Ensure-HostGitver {
     )
 
     $dubPackagesDir = Join-Path $homeDir ".dub\packages"
+    $gitverPackage = "gitver@1.7.2"
     if (-not (Test-Path $dubPackagesDir)) {
         New-Item -ItemType Directory -Force -Path $dubPackagesDir | Out-Null
     }
 
-    $hostGitverBin = $null
-
-    function Find-HostGitverBin {
+    function Find-HostGitverDir {
         $candidates = @()
+        $candidates += Join-Path $dubPackagesDir "gitver\1.7.2\gitver"
+        $candidates += Join-Path $dubPackagesDir "local\gitver\1.7.2\gitver"
 
         if (Test-Path $dubPackagesDir) {
-            $candidates += Get-ChildItem -Path $dubPackagesDir -Directory -Recurse -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -eq "out" } |
-                ForEach-Object { Join-Path $_.FullName "gitver.exe" }
+            $candidates += Get-ChildItem -Path $dubPackagesDir -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -in @("dub.sdl", "dub.json", "package.json") } |
+                Where-Object { $_.Directory.Name -eq "gitver" } |
+                Select-Object -ExpandProperty DirectoryName
         }
 
-        $candidates += Get-ChildItem -Path $homeDir -Filter gitver.exe -File -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName
+        if (Test-Path $homeDir) {
+            $candidates += Get-ChildItem -Path $homeDir -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -in @("dub.sdl", "dub.json", "package.json") } |
+                Where-Object { $_.Directory.Name -eq "gitver" } |
+                Select-Object -ExpandProperty DirectoryName
+        }
 
         return $candidates |
             Where-Object { $_ -and (Test-Path $_) } |
@@ -108,12 +114,54 @@ function Ensure-HostGitver {
             Select-Object -First 1
     }
 
+    function Find-HostGitverBin {
+        $candidates = @()
+
+        if (Test-Path $dubPackagesDir) {
+            $candidates += Get-ChildItem -Path $dubPackagesDir -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -eq "gitver.exe" } |
+                Select-Object -ExpandProperty FullName
+        }
+
+        if (Test-Path $homeDir) {
+            $candidates += Get-ChildItem -Path $homeDir -Filter gitver.exe -File -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+        }
+
+        return $candidates |
+            Where-Object { $_ -and (Test-Path $_) } |
+            Select-Object -Unique |
+            Select-Object -First 1
+    }
+
+    $hostGitverDir = Find-HostGitverDir
     $hostGitverBin = Find-HostGitverBin
 
-    if (-not $hostGitverBin) {
-        & $Dub fetch "gitver@1.7.2" | Out-Null
+    if (-not $hostGitverDir -and -not $hostGitverBin) {
+        & $Dub fetch $gitverPackage | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "failed to fetch gitver package"
+        }
+
+        $hostGitverDir = Find-HostGitverDir
+        $hostGitverBin = Find-HostGitverBin
+    }
+
+    if (-not $hostGitverDir -and $hostGitverBin) {
+        $hostGitverDir = Split-Path -Parent (Split-Path -Parent $hostGitverBin)
+    }
+
+    New-Item -ItemType Directory -Force -Path $wrapperDir | Out-Null
+    if ($hostGitverDir) {
+        Push-Location $hostGitverDir
+        try {
+            & $Dub build "--compiler=$Ldc2" --force | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "failed to build host gitver"
+            }
+        }
+        finally {
+            Pop-Location
         }
 
         $hostGitverBin = Find-HostGitverBin
@@ -124,7 +172,7 @@ function Ensure-HostGitver {
         @"
 @echo off
 setlocal
-"%Dub%" run gitver@1.7.2 -- --help >nul 2>&1
+"%Dub%" run $gitverPackage -- --help >nul 2>&1
 exit /b %errorlevel%
 "@ | Set-Content -LiteralPath $probePath -Encoding ascii
 
@@ -139,7 +187,7 @@ if "%1"=="run" if "%2"=="gitver" (
   shift
   shift
   if "%1"=="--" shift
-  "%REAL_DUB%" run gitver@1.7.2 -- %*
+  "%REAL_DUB%" run $gitverPackage -- %*
   exit /b %errorlevel%
 )
 "%REAL_DUB%" %*
@@ -148,20 +196,7 @@ exit /b %errorlevel%
             return
         }
 
-        throw "failed to locate fetched gitver package directory or executable under $dubPackagesDir"
-    }
-
-    New-Item -ItemType Directory -Force -Path $wrapperDir | Out-Null
-    $hostGitverDir = Split-Path -Parent (Split-Path -Parent $hostGitverBin)
-    Push-Location $hostGitverDir
-    try {
-        & $Dub build "--compiler=$Ldc2" --force | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "failed to build host gitver"
-        }
-    }
-    finally {
-        Pop-Location
+        throw "failed to locate or build gitver under $dubPackagesDir"
     }
 
     if (-not (Test-Path $hostGitverBin)) {
