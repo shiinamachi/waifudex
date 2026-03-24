@@ -115,16 +115,34 @@ function Ensure-HostGitver {
     }
 
     function Find-HostGitverBin {
+        param(
+            [string]$SearchRoot = $null
+        )
+
         $candidates = @()
+
+        if ($SearchRoot -and (Test-Path $SearchRoot)) {
+            $candidates += @(
+                (Join-Path $SearchRoot "out\gitver.exe"),
+                (Join-Path $SearchRoot "out\gitver"),
+                (Join-Path $SearchRoot "gitver.exe"),
+                (Join-Path $SearchRoot "gitver")
+            )
+
+            $candidates += Get-ChildItem -Path $SearchRoot -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -in @("gitver.exe", "gitver") } |
+                Select-Object -ExpandProperty FullName
+        }
 
         if (Test-Path $dubPackagesDir) {
             $candidates += Get-ChildItem -Path $dubPackagesDir -File -Recurse -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -eq "gitver.exe" } |
+                Where-Object { $_.Name -in @("gitver.exe", "gitver") } |
                 Select-Object -ExpandProperty FullName
         }
 
         if (Test-Path $homeDir) {
-            $candidates += Get-ChildItem -Path $homeDir -Filter gitver.exe -File -Recurse -ErrorAction SilentlyContinue |
+            $candidates += Get-ChildItem -Path $homeDir -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -in @("gitver.exe", "gitver") } |
                 Select-Object -ExpandProperty FullName
         }
 
@@ -135,7 +153,7 @@ function Ensure-HostGitver {
     }
 
     $hostGitverDir = Find-HostGitverDir
-    $hostGitverBin = Find-HostGitverBin
+    $hostGitverBin = Find-HostGitverBin -SearchRoot $hostGitverDir
 
     if (-not $hostGitverDir -and -not $hostGitverBin) {
         & $Dub fetch $gitverPackage | Out-Null
@@ -144,7 +162,7 @@ function Ensure-HostGitver {
         }
 
         $hostGitverDir = Find-HostGitverDir
-        $hostGitverBin = Find-HostGitverBin
+        $hostGitverBin = Find-HostGitverBin -SearchRoot $hostGitverDir
     }
 
     if (-not $hostGitverDir -and $hostGitverBin) {
@@ -164,7 +182,7 @@ function Ensure-HostGitver {
             Pop-Location
         }
 
-        $hostGitverBin = Find-HostGitverBin
+        $hostGitverBin = Find-HostGitverBin -SearchRoot $hostGitverDir
     }
 
     if (-not $hostGitverBin) {
