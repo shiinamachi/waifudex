@@ -10,6 +10,11 @@ export default function AboutTab() {
         title="Open Source License"
         description="waifudex was developed using various open source technologies.\nWe acknowledge and respect the copyright and license terms of each project."
       />
+      <SettingItem
+        title="Github"
+        type="link"
+        link="https://github.com/shiinamachi/waifudex"
+      />
     </div>
   );
 }

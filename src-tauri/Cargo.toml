@@ -22,6 +22,7 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
 sysinfo = "=0.38.4"
 tauri = { version = "=2.10.3", features = ["tray-icon"] }
+tauri-plugin-opener = "=2.5.3"
 tauri-runtime-wry = "=2.10.1"
 time = { version = "=0.3.47", features = ["formatting"] }
 tokio = { version = "=1.50.0", features = ["macros", "rt-multi-thread", "time"] }

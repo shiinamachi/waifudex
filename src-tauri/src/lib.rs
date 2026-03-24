@@ -1,6 +1,7 @@
 pub mod app_settings;
 pub mod codex;
 pub mod contracts;
+pub mod external_link;
 pub mod mascot;
 pub mod mascot_motion;
 pub mod mascot_window;
@@ -34,6 +35,7 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            external_link::register_open_external_url_listener(&app_handle);
             app_settings::initialize(&app_handle)?;
             mascot_window::initialize(&app_handle)?;
             let _ = app_settings::sync_display_monitor_on_startup(&app_handle);

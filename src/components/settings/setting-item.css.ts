@@ -1,5 +1,14 @@
 import { globalStyle, style } from "@vanilla-extract/css";
 
+export const linkCard = style({
+  cursor: "pointer",
+});
+
+export const linkChevron = style({
+  display: "block",
+  opacity: 0.6,
+});
+
 export const winUiSwitch = style({});
 
 globalStyle(`${winUiSwitch}.fui-Switch`, {
