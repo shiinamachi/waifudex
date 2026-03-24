@@ -34,6 +34,7 @@ try {
         throw "Missing Tauri signing key: $signingKeyPath"
     }
 
+    $env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText($signingKeyPath)
     $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $signingKeyPath
 
     & .\scripts\ensure-windows-host-build-env.ps1
