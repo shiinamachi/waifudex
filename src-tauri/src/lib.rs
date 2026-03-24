@@ -29,6 +29,8 @@ pub fn run() {
             runtime_state::get_runtime_bootstrap,
             app_settings::get_app_settings,
             app_settings::update_app_settings_command,
+            window::get_character_visibility,
+            window::set_character_visibility,
             mascot_window::get_display_monitors,
             mascot_window::move_character_window_command
         ])

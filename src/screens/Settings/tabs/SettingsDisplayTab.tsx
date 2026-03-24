@@ -14,6 +14,7 @@ import {
   type CharacterWindowPosition,
   useAppSetting,
 } from "../../../hooks/useAppSetting";
+import { useCharacterVisibility } from "../../../hooks/useCharacterVisibility";
 import { tabsContainer } from "./tabs.css";
 
 const BASE_WIDTH = 420;
@@ -34,6 +35,8 @@ interface DisplayMonitorOption {
 }
 
 export default function SettingsDisplayTab() {
+  const { visible: showCharacter, setVisible: setShowCharacter } =
+    useCharacterVisibility();
   const { value: alwaysOnTop, setValue: setAlwaysOnTop } =
     useAppSetting("alwaysOnTop");
   const {
@@ -128,6 +131,16 @@ export default function SettingsDisplayTab() {
 
   return (
     <div className={tabsContainer}>
+      <SettingItem
+        title="Show character"
+        description="Show the waifudex character window on the desktop (this runtime)"
+        type="switch"
+        value={showCharacter}
+        onChange={(nextVisible) => {
+          void setShowCharacter(nextVisible);
+        }}
+      />
+
       <SettingItem
         title="Always on top"
         description="Always display the waifudex character at the top"

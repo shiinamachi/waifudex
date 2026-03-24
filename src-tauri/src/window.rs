@@ -1,9 +1,10 @@
 use std::sync::Mutex;
 
 use crate::codex::StatusKind;
-use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
 pub const SETTINGS_WINDOW_LABEL: &str = "settings";
+pub const CHARACTER_VISIBILITY_CHANGED_EVENT: &str = "waifudex://character-visibility-changed";
 const SETTINGS_WINDOW_TITLE: &str = "Settings - waifudex";
 const SETTINGS_WINDOW_ENTRY: &str = "index.html";
 
@@ -29,6 +30,24 @@ pub struct WindowVisibilityPolicy {
 
 pub struct WindowVisibilityState {
     inner: Mutex<WindowVisibilityPolicy>,
+}
+
+fn emit_character_visibility_changed<R: Runtime>(
+    app: &AppHandle<R>,
+    visible: bool,
+) -> tauri::Result<()> {
+    app.emit(CHARACTER_VISIBILITY_CHANGED_EVENT, visible)
+}
+
+fn resolve_explicit_visibility_change(
+    current_visible: bool,
+    requested_visible: bool,
+) -> WindowCommand {
+    match (current_visible, requested_visible) {
+        (false, true) => WindowCommand::Show,
+        (true, false) => WindowCommand::Hide,
+        _ => WindowCommand::Noop,
+    }
 }
 
 impl WindowVisibilityPolicy {
@@ -167,6 +186,7 @@ pub fn show_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()
             window_state.sync_visible(true);
         }
         let _ = crate::tray::sync_character_toggle_menu_item(app);
+        emit_character_visibility_changed(app, true)?;
         return Ok(());
     }
 
@@ -174,6 +194,7 @@ pub fn show_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()
         window_state.sync_visible(true);
     }
     let _ = crate::tray::sync_character_toggle_menu_item(app);
+    emit_character_visibility_changed(app, true)?;
 
     Ok(())
 }
@@ -186,6 +207,7 @@ pub fn hide_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()
             window_state.sync_visible(false);
         }
         let _ = crate::tray::sync_character_toggle_menu_item(app);
+        emit_character_visibility_changed(app, false)?;
         return Ok(());
     }
 
@@ -193,6 +215,7 @@ pub fn hide_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()
         window_state.sync_visible(false);
     }
     let _ = crate::tray::sync_character_toggle_menu_item(app);
+    emit_character_visibility_changed(app, false)?;
 
     Ok(())
 }
@@ -231,6 +254,25 @@ pub fn toggle_character_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_character_visibility(app: AppHandle) -> Result<bool, String> {
+    is_character_window_visible(&app).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_character_visibility(app: AppHandle, visible: bool) -> Result<bool, String> {
+    match resolve_explicit_visibility_change(
+        is_character_window_visible(&app).map_err(|error| error.to_string())?,
+        visible,
+    ) {
+        WindowCommand::Show => show_character_window(&app).map_err(|error| error.to_string())?,
+        WindowCommand::Hide => hide_character_window(&app).map_err(|error| error.to_string())?,
+        WindowCommand::Noop => {}
+    }
+
+    is_character_window_visible(&app).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
@@ -291,5 +333,41 @@ mod tests {
             WebviewUrl::App(path) => assert_eq!(path.to_string_lossy(), "index.html"),
             other => panic!("expected app asset URL, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn character_visibility_changed_event_name_is_stable() {
+        assert_eq!(
+            CHARACTER_VISIBILITY_CHANGED_EVENT,
+            "waifudex://character-visibility-changed"
+        );
+    }
+
+    #[test]
+    fn resolve_explicit_visibility_change_returns_show_for_hidden_window() {
+        assert_eq!(
+            resolve_explicit_visibility_change(false, true),
+            WindowCommand::Show
+        );
+    }
+
+    #[test]
+    fn resolve_explicit_visibility_change_returns_hide_for_visible_window() {
+        assert_eq!(
+            resolve_explicit_visibility_change(true, false),
+            WindowCommand::Hide
+        );
+    }
+
+    #[test]
+    fn resolve_explicit_visibility_change_returns_noop_when_state_matches() {
+        assert_eq!(
+            resolve_explicit_visibility_change(true, true),
+            WindowCommand::Noop
+        );
+        assert_eq!(
+            resolve_explicit_visibility_change(false, false),
+            WindowCommand::Noop
+        );
     }
 }
