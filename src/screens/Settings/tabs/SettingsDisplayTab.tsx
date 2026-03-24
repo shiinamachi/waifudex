@@ -14,6 +14,7 @@ import {
   type CharacterWindowPosition,
   useAppSetting,
 } from "../../../hooks/useAppSetting";
+import { tabsContainer } from "./tabs.css";
 
 const BASE_WIDTH = 420;
 const BASE_HEIGHT = 720;
@@ -126,13 +127,7 @@ export default function SettingsDisplayTab() {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: tokens.spacingVerticalS,
-      }}
-    >
+    <div className={tabsContainer}>
       <SettingItem
         title="Always on top"
         description="Always display the waifudex character at the top"
