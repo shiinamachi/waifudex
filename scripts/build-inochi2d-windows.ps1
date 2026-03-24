@@ -250,7 +250,7 @@ exit /b %errorlevel%
 function Build-RuntimeLibs {
     $xwinDirForFlags = $xwinDir -replace "\\", "/"
     $runtimeDFlags = "--mtriple=$targetTriple;--linker=lld-link;--mscrtlib=msvcrt;-link-defaultlib-shared=false"
-    $runtimeCFlags = "--target=$targetTriple;-Wno-unused-command-line-argument;-fuse-ld=lld-link;-isystem;$xwinDirForFlags/crt/include;-isystem;$xwinDirForFlags/sdk/include/ucrt;-isystem;$xwinDirForFlags/sdk/include/um;-isystem;$xwinDirForFlags/sdk/include/shared;-isystem;$xwinDirForFlags/sdk/include/winrt"
+    $runtimeCFlags = "--target=$targetTriple;-Wno-unused-command-line-argument;-fuse-ld=lld-link;-imsvc;$xwinDirForFlags/crt/include;-imsvc;$xwinDirForFlags/sdk/include/ucrt;-imsvc;$xwinDirForFlags/sdk/include/um;-imsvc;$xwinDirForFlags/sdk/include/shared;-imsvc;$xwinDirForFlags/sdk/include/winrt"
     $runtimeLinkerFlags = "-fuse-ld=lld-link;/LIBPATH:$xwinDirForFlags/crt/lib/x86_64;/LIBPATH:$xwinDirForFlags/sdk/lib/um/x86_64;/LIBPATH:$xwinDirForFlags/sdk/lib/ucrt/x86_64"
     $runtimeConfigureLog = Join-Path $waifudexCacheDir "ldc-runtime-configure.log"
     $runtimeNinjaLog = Join-Path $waifudexCacheDir "ldc-runtime-ninja.log"
