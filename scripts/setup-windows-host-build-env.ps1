@@ -40,6 +40,38 @@ function Import-LlvmBin {
     }
 }
 
+function Import-LdcBin {
+    $candidates = @()
+
+    $toolsRoot = "C:\tools"
+    if (Test-Path $toolsRoot) {
+        $candidates += Get-ChildItem -LiteralPath $toolsRoot -Directory -Filter "ldc2-*-windows-multilib" -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "bin" }
+    }
+
+    $chocoLibRoot = Join-Path $env:ProgramData "chocolatey\lib"
+    if (Test-Path $chocoLibRoot) {
+        $candidates += Get-ChildItem -LiteralPath $chocoLibRoot -Directory -Filter "ldc*" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                @(
+                    (Join-Path $_.FullName "tools\bin"),
+                    (Join-Path $_.FullName "bin")
+                )
+            }
+    }
+
+    $candidates = $candidates |
+        Where-Object { $_ -and (Test-Path $_) } |
+        Select-Object -Unique
+
+    foreach ($candidate in $candidates) {
+        if (-not ($env:PATH -split ";" | Where-Object { $_ -eq $candidate })) {
+            $env:PATH = "$candidate;$env:PATH"
+        }
+    }
+}
+
 function Test-WingetPackageInstalled {
     param([string]$Id)
 
@@ -123,6 +155,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Refresh-PathFromMachine
 Import-LlvmBin
+Import-LdcBin
 
 if (-not (Test-Path ".\node_modules")) {
     & pnpm install
@@ -182,6 +215,7 @@ if (-not (Test-CommandAvailable "dub")) {
 if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-build-runtime")) {
     Install-ChocolateyPackage -Name "ldc"
     Refresh-PathFromMachine
+    Import-LdcBin
 }
 
 if (-not (Test-CommandAvailable "dub")) {
