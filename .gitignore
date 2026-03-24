@@ -5,6 +5,7 @@ dist
 src-tauri/target
 src-tauri/gen
 AGENTS.md
+CLAUDE.md
 docs
 .worktress
 .worktrees
