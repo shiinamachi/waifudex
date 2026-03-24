@@ -3,40 +3,10 @@ node = "24.14.0"
 pnpm = "10.32.1"
 rust = { version = "1.94.0", profile = "minimal", components = "rustfmt", targets = ["x86_64-pc-windows-msvc"] }
 
-[tasks."setup:inochi2d-linux"]
-description = "Install Linux build prerequisites for inochi2d-c on Ubuntu/WSL"
-run = '''
-if ! grep -q '^ID=ubuntu$' /etc/os-release; then
-  echo "This task supports Ubuntu only." >&2
-  exit 1
-fi
-sudo apt update
-sudo apt install -y ldc dub libegl1-mesa-dev libclang-dev
-'''
+[tasks."setup:windows-host-build"]
+description = "Install and prepare native Windows host prerequisites for pnpm inochi2d:build:windows, pnpm tauri:build:windows, and pnpm tauri:release:windows"
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File ".\scripts\setup-windows-host-build-env.ps1"'
 
-[tasks."setup:windows-build"]
-description = "Prepare Ubuntu WSL for Windows x64 cross-builds"
-run = '''
-if ! grep -q '^ID=ubuntu$' /etc/os-release; then
-  echo "This task supports Ubuntu on WSL only." >&2
-  exit 1
-fi
-if [ -z "${WSL_DISTRO_NAME:-}" ] && ! grep -qiE '(microsoft|wsl)' /proc/version; then
-  echo "This task supports Ubuntu on WSL only." >&2
-  exit 1
-fi
-sudo apt update
-sudo apt install -y llvm clang lld
-cargo install --locked cargo-xwin
-'''
-
-[tasks."verify:inochi2d-windows-artifacts"]
-description = "Verify copied Windows inochi2d-c artifacts exist in third_party/inochi2d-c/out"
-run = '''
-test -f third_party/inochi2d-c/out/inochi2d-c.dll
-test -f third_party/inochi2d-c/out/inochi2d-c.lib
-'''
-
-[tasks."build:inochi2d-windows"]
-description = "Build Windows inochi2d-c artifacts from WSL"
-run = "./scripts/build-inochi2d-windows.sh"
+[tasks."setup:wsl-dev-windows"]
+description = "Install and prepare Ubuntu WSL prerequisites for pnpm tauri:dev:wsl"
+run = "./scripts/setup-wsl-dev-windows-env.sh"

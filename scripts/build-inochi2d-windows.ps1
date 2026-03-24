@@ -17,6 +17,11 @@ $runtimeLibDir = Join-Path $waifudexCacheDir "runtime-lib"
 $workDir = Join-Path $waifudexCacheDir "work"
 $wrapperDir = Join-Path $waifudexCacheDir "dub-wrapper"
 
+$ensureScript = Join-Path $PSScriptRoot "ensure-windows-host-build-env.ps1"
+if (Test-Path $ensureScript) {
+    & $ensureScript
+}
+
 function Require-Command {
     param([string]$Name)
 

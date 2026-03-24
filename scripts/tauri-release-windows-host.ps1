@@ -27,6 +27,7 @@ if ($root.StartsWith("\\")) {
 try {
     Set-Location -LiteralPath $rootPath
 
+    & .\scripts\ensure-windows-host-build-env.ps1
     node .\scripts\sync-app-version.mjs
     node .\scripts\generate-dependency-inventory.mjs
     & .\scripts\build-inochi2d-windows.ps1
