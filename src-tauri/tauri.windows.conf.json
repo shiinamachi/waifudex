@@ -1,9 +1,5 @@
 {
-  "build": {
-    "beforeBuildCommand": ""
-  },
   "bundle": {
-    "targets": ["nsis"],
     "resources": [
       "../third_party/inochi2d-c/out/inochi2d-c.dll"
     ]

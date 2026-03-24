@@ -1,17 +1,25 @@
 fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").expect("target os");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
     if target_os == "linux" {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
         let native_lib_dir = std::path::Path::new(&manifest_dir)
             .join("../third_party/inochi2d-c/out")
             .canonicalize()
             .expect("native lib dir");
+        let so_path = std::path::Path::new(&manifest_dir)
+            .join("../third_party/inochi2d-c/out/libinochi2d-c.so");
+        println!("cargo:rerun-if-changed={}", so_path.display());
+        if so_path.exists() {
+            std::env::set_var(
+                "TAURI_CONFIG",
+                r#"{"bundle":{"resources":["../third_party/inochi2d-c/out/libinochi2d-c.so"]}}"#,
+            );
+        }
         println!(
             "cargo:rustc-link-arg=-Wl,-rpath,{}",
             native_lib_dir.display()
         );
     } else if target_os == "windows" {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
         let dll_path = std::path::Path::new(&manifest_dir)
             .join("../third_party/inochi2d-c/out/inochi2d-c.dll");
         println!("cargo:rerun-if-changed={}", dll_path.display());

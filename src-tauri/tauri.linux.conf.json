@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": [
+      "../third_party/inochi2d-c/out/libinochi2d-c.so"
+    ]
+  }
+}

@@ -73,22 +73,122 @@ pub fn run() {
 mod tests {
     use serde_json::Value;
 
+    fn parse_json(source: &str) -> Value {
+        serde_json::from_str(source).expect("json should parse")
+    }
+
+    fn tauri_config() -> Value {
+        parse_json(include_str!("../tauri.conf.json"))
+    }
+
+    fn tauri_windows_build_config() -> Value {
+        parse_json(include_str!("../tauri.windows.build.conf.json"))
+    }
+
+    fn tauri_linux_config() -> Value {
+        parse_json(include_str!("../tauri.linux.conf.json"))
+    }
+
+    fn tauri_windows_updater_config() -> Value {
+        parse_json(include_str!("../tauri.windows.updater.conf.json"))
+    }
+
+    fn tauri_windows_platform_config() -> Value {
+        parse_json(include_str!("../tauri.windows.conf.json"))
+    }
+
+    fn apply_merge_patch(target: &mut Value, patch: &Value) {
+        match (target, patch) {
+            (Value::Object(target_obj), Value::Object(patch_obj)) => {
+                for (key, patch_value) in patch_obj {
+                    if patch_value.is_null() {
+                        target_obj.remove(key);
+                        continue;
+                    }
+
+                    match target_obj.get_mut(key) {
+                        Some(target_value) => apply_merge_patch(target_value, patch_value),
+                        None => {
+                            target_obj.insert(key.clone(), patch_value.clone());
+                        }
+                    }
+                }
+            }
+            (target_value, patch_value) => {
+                *target_value = patch_value.clone();
+            }
+        }
+    }
+
+    fn merged_config(overlay: Value) -> Value {
+        let mut merged = tauri_config();
+        apply_merge_patch(&mut merged, &overlay);
+        merged
+    }
+
     fn tauri_config_version() -> String {
-        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json"))
-            .expect("tauri.conf.json should parse");
-        config["version"]
+        tauri_config()["version"]
             .as_str()
             .expect("tauri config version should be a string")
             .to_owned()
     }
 
     fn package_json_version() -> String {
-        let package: Value = serde_json::from_str(include_str!("../../package.json"))
-            .expect("package.json should parse");
+        let package = parse_json(include_str!("../../package.json"));
         package["version"]
             .as_str()
             .expect("package.json version should be a string")
             .to_owned()
+    }
+
+    fn assert_windows_bundle_resources(config: &Value, config_name: &str) {
+        let resources = config["bundle"]["resources"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{config_name} should define bundle.resources"));
+
+        assert!(
+            resources
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|resource| resource.ends_with("/inochi2d-c.dll")),
+            "{config_name} should bundle the Windows inochi2d DLL"
+        );
+        assert!(
+            resources
+                .iter()
+                .filter_map(Value::as_str)
+                .all(|resource| !resource.ends_with("/libinochi2d-c.so")),
+            "{config_name} should not bundle the Linux inochi2d shared object"
+        );
+    }
+
+    fn assert_linux_bundle_resources(config: &Value, config_name: &str) {
+        let resources = config["bundle"]["resources"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{config_name} should define bundle.resources"));
+
+        assert!(
+            resources
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|resource| resource.ends_with("/libinochi2d-c.so")),
+            "{config_name} should bundle the Linux inochi2d shared object"
+        );
+        assert!(
+            resources
+                .iter()
+                .filter_map(Value::as_str)
+                .all(|resource| !resource.ends_with("/inochi2d-c.dll")),
+            "{config_name} should not bundle the Windows inochi2d DLL"
+        );
+    }
+
+    #[test]
+    fn shared_config_does_not_bundle_platform_specific_runtime() {
+        assert!(
+            tauri_config()["bundle"]["resources"].is_null(),
+            "tauri.conf.json should not define platform-specific bundle.resources"
+        );
     }
 
     #[test]
@@ -97,5 +197,37 @@ mod tests {
 
         assert_eq!(app_version, tauri_config_version());
         assert_eq!(app_version, package_json_version());
+    }
+
+    #[test]
+    fn windows_build_config_bundles_windows_inochi2d_runtime() {
+        assert_windows_bundle_resources(
+            &merged_config(tauri_windows_build_config()),
+            "tauri.windows.build.conf.json",
+        );
+    }
+
+    #[test]
+    fn windows_updater_config_bundles_windows_inochi2d_runtime() {
+        assert_windows_bundle_resources(
+            &merged_config(tauri_windows_updater_config()),
+            "tauri.windows.updater.conf.json",
+        );
+    }
+
+    #[test]
+    fn windows_platform_config_bundles_windows_inochi2d_runtime() {
+        assert_windows_bundle_resources(
+            &merged_config(tauri_windows_platform_config()),
+            "tauri.windows.conf.json",
+        );
+    }
+
+    #[test]
+    fn linux_config_bundles_linux_inochi2d_runtime() {
+        assert_linux_bundle_resources(
+            &merged_config(tauri_linux_config()),
+            "tauri.linux.conf.json",
+        );
     }
 }

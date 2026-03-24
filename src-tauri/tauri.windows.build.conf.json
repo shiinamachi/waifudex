@@ -1,5 +1,10 @@
 {
     "build": {
         "beforeBuildCommand": ""
+    },
+    "bundle": {
+        "resources": [
+            "../third_party/inochi2d-c/out/inochi2d-c.dll"
+        ]
     }
 }
