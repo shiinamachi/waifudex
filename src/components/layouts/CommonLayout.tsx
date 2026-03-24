@@ -12,6 +12,7 @@ import {
 import "the-new-css-reset";
 
 import { contents, layoutRoot, providerRoot } from "./common-layout.css";
+import { installGlobalDragLock } from "./drag-lock";
 
 function systemThemeFallback(): WindowTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -53,6 +54,10 @@ export default function CommonLayout({ children }: PropsWithChildren) {
       disposed = true;
       unlistenThemeChange?.();
     };
+  }, []);
+
+  useEffect(() => {
+    return installGlobalDragLock(document);
   }, []);
 
   return (

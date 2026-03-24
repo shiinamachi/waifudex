@@ -15,10 +15,17 @@ globalStyle("body", {
   height: "100%",
   background: "Canvas",
   color: "CanvasText",
+  userSelect: "none",
+  WebkitUserSelect: "none",
 });
 
 globalStyle("#app", {
   height: "100%",
+});
+
+globalStyle("input, textarea, [contenteditable=\"true\"]", {
+  userSelect: "text",
+  WebkitUserSelect: "text",
 });
 
 export const providerRoot = style({
