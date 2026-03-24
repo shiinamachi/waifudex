@@ -48,6 +48,13 @@ impl MascotManager {
         width: u32,
         height: u32,
     ) -> Result<Vec<String>, String> {
+        #[cfg(windows)]
+        if std::env::var_os("WAIFUDEX_DISABLE_MASCOT_RENDERER").is_some() {
+            let _ = (&self, app_handle, model_path, width, height);
+            eprintln!("waifudex mascot: renderer init disabled on Windows");
+            return Ok(Vec::new());
+        }
+
         {
             let guard = self
                 .inner
@@ -58,42 +65,44 @@ impl MascotManager {
             }
         }
 
-        let resolved_model_path = resolve_model_path(&app_handle, &model_path)
-            .ok_or_else(|| format!("mascot model path could not be resolved: {model_path}"))?;
-        let (sender, receiver) = mpsc::channel();
-        let (init_sender, init_receiver) = mpsc::sync_channel(1);
+        {
+            let resolved_model_path = resolve_model_path(&app_handle, &model_path)
+                .ok_or_else(|| format!("mascot model path could not be resolved: {model_path}"))?;
+            let (sender, receiver) = mpsc::channel();
+            let (init_sender, init_receiver) = mpsc::sync_channel(1);
 
-        let thread = thread::Builder::new()
-            .name("waifudex-mascot".to_string())
-            .spawn(move || {
-                render_loop(
-                    app_handle,
-                    resolved_model_path,
-                    width,
-                    height,
-                    receiver,
-                    init_sender,
-                )
-            })
-            .map_err(|error| format!("failed to spawn mascot render loop: {error}"))?;
+            let thread = thread::Builder::new()
+                .name("waifudex-mascot".to_string())
+                .spawn(move || {
+                    render_loop(
+                        app_handle,
+                        resolved_model_path,
+                        width,
+                        height,
+                        receiver,
+                        init_sender,
+                    )
+                })
+                .map_err(|error| format!("failed to spawn mascot render loop: {error}"))?;
 
-        let available_params = init_receiver
-            .recv()
-            .map_err(|_| "mascot render thread failed to initialize".to_string())??;
+            let available_params = init_receiver
+                .recv()
+                .map_err(|_| "mascot render thread failed to initialize".to_string())??;
 
-        let active = ActiveMascot {
-            available_params: available_params.clone(),
-            sender,
-            thread: Some(thread),
-        };
+            let active = ActiveMascot {
+                available_params: available_params.clone(),
+                sender,
+                thread: Some(thread),
+            };
 
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|_| "mascot manager mutex poisoned".to_string())?;
-        *guard = Some(active);
+            let mut guard = self
+                .inner
+                .lock()
+                .map_err(|_| "mascot manager mutex poisoned".to_string())?;
+            *guard = Some(active);
 
-        Ok(available_params)
+            Ok(available_params)
+        }
     }
 
     pub fn update_params(&self, params: Vec<MascotParamValue>) -> Result<(), String> {
