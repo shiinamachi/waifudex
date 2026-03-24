@@ -574,6 +574,7 @@ Build-RuntimeLibs
 
 $previousPath = $env:PATH
 $previousDFlags = $env:DFLAGS
+$dubWarmupLog = Join-Path $waifudexCacheDir "inochi2d-dub-build.log"
 $env:PATH = "$wrapperDir;$homeDir\.cache\cargo-xwin;$previousPath"
 $env:DFLAGS = "--mtriple=$targetTriple --linker=lld-link --mscrtlib=msvcrt -link-defaultlib-shared=false"
 
@@ -584,9 +585,12 @@ $previousCrossCompileErrorAction = $ErrorActionPreference
 # these become terminating errors. Use "Continue" and check exit codes.
 $ErrorActionPreference = "Continue"
 try {
-    & (Join-Path $wrapperDir "dub.cmd") build "--compiler=$ldc2" --config=yesgl --arch=x86_64 --force 2>&1 | Out-Null
+    & (Join-Path $wrapperDir "dub.cmd") build "--compiler=$ldc2" --config=yesgl --arch=x86_64 --force *> $dubWarmupLog
     if ($LASTEXITCODE -ne 0) {
-        throw "failed to build inochi2d-c with dub (exit code $LASTEXITCODE)"
+        Write-Warning "dub build warm-up failed with exit code $LASTEXITCODE; continuing with manual Windows link step. Log: $dubWarmupLog"
+        if (Test-Path $dubWarmupLog) {
+            Get-Content -LiteralPath $dubWarmupLog -Tail 200
+        }
     }
     Build-WindowsInochi2d -Ldc2 $ldc2 -Dub (Join-Path $wrapperDir "dub.cmd")
 }
