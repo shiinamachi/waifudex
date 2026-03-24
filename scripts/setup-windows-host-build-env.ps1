@@ -249,6 +249,10 @@ if ($LASTEXITCODE -ne 0) {
 
 $xwinDir = if ($env:XWIN_DIR) {
     $env:XWIN_DIR
+} elseif ($env:XWIN_CACHE_DIR) {
+    $env:XWIN_CACHE_DIR
+} elseif ($env:LOCALAPPDATA) {
+    Join-Path $env:LOCALAPPDATA "cargo-xwin\xwin"
 } else {
     Join-Path $env:USERPROFILE ".cache\cargo-xwin\xwin"
 }

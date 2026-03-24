@@ -8,7 +8,15 @@ $sourceDir = Join-Path $root "third_party\inochi2d-c"
 $outDir = Join-Path $sourceDir "out"
 $targetTriple = "x86_64-pc-windows-msvc"
 $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
-$xwinDir = if ($env:XWIN_DIR) { $env:XWIN_DIR } else { Join-Path $homeDir ".cache\cargo-xwin\xwin" }
+$xwinDir = if ($env:XWIN_DIR) {
+    $env:XWIN_DIR
+} elseif ($env:XWIN_CACHE_DIR) {
+    $env:XWIN_CACHE_DIR
+} elseif ($env:LOCALAPPDATA) {
+    Join-Path $env:LOCALAPPDATA "cargo-xwin\xwin"
+} else {
+    Join-Path $homeDir ".cache\cargo-xwin\xwin"
+}
 $waifudexCacheDir = if ($env:XDG_CACHE_HOME) {
     Join-Path $env:XDG_CACHE_HOME "waifudex\inochi2d-windows"
 } else {
