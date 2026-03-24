@@ -68,6 +68,7 @@ function Get-MissingWindowsBuildRequirements {
         "cmake",
         "ninja",
         "clang",
+        "clang-cl",
         "lld-link",
         "llvm-ar",
         "llvm-lib",

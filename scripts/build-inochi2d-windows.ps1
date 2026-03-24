@@ -258,8 +258,8 @@ function Build-RuntimeLibs {
 
     $previousCc = $env:CC
     $previousCxx = $env:CXX
-    $env:CC = "clang"
-    $env:CXX = "clang++"
+    $env:CC = "clang-cl"
+    $env:CXX = "clang-cl"
 
     try {
         & ldc-build-runtime --ninja --buildDir $runtimeBuildDir `
@@ -467,6 +467,7 @@ Require-Command "ninja" | Out-Null
 Require-Command "python" | Out-Null
 Require-Command "cmake" | Out-Null
 Require-Command "clang" | Out-Null
+Require-Command "clang-cl" | Out-Null
 Require-Command "lld-link" | Out-Null
 
 & $cargo xwin env --target $targetTriple | Out-Null
