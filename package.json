@@ -5,17 +5,18 @@
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dependencies:generate": "node ./scripts/generate-dependency-inventory.mjs",
+    "dev": "pnpm dependencies:generate && vite",
+    "build": "pnpm dependencies:generate && vite build",
     "inochi2d:build": "./scripts/build-inochi2d.sh",
     "inochi2d:build:windows": "./scripts/build-inochi2d-windows.sh",
     "preview": "vite preview",
-    "check": "tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./tsconfig.node.json",
+    "check": "pnpm dependencies:generate && tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./tsconfig.node.json",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "pnpm dependencies:generate && tauri dev",
     "tauri:dev:windows": "./scripts/tauri-dev-windows.sh",
-    "tauri:build": "tauri build",
-    "tauri:build:windows": "pnpm inochi2d:build:windows && pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle"
+    "tauri:build": "pnpm dependencies:generate && tauri build",
+    "tauri:build:windows": "pnpm dependencies:generate && pnpm inochi2d:build:windows && pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle"
   },
   "dependencies": {
     "@fluentui/react-components": "9.73.4",

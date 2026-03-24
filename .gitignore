@@ -16,3 +16,4 @@ third_party/inochi2d-c/out
 third_party/inochi2d-c/.dub
 crates/waifudex-mascot/target
 crates/inochi2d-sys/target
+src/generated/dependencies.json

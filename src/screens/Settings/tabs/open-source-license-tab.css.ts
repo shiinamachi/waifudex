@@ -127,6 +127,16 @@ export const accordionPanel = style({
   padding: tokens.spacingVerticalS,
 });
 
+export const accordionPanelText = style({
+  display: "block",
+  margin: 0,
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+  fontFamily: "inherit",
+  fontSize: "inherit",
+  lineHeight: "inherit",
+});
+
 export const badgeStyle = style({
   marginLeft: "auto",
 });

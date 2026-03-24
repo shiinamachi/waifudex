@@ -14,10 +14,12 @@ import {
 import { emit } from "@tauri-apps/api/event";
 import React, { useMemo } from "react";
 
-import inventoryData from "../../../../waifudex-dependency-inventory.json";
+import inventoryData from "../../../generated/dependencies.json";
+import licenseTexts from "../../../licenses/license-texts.js";
 import {
   accordionHeaderContent,
   accordionPanel,
+  accordionPanelText,
   badgeStyle,
   container,
   header,
@@ -40,9 +42,17 @@ import {
 interface PackageEntry {
   name: string;
   version: string;
-  license?: string;
+  specifier?: string;
+  license?: string[];
   repository?: string;
   author?: string;
+}
+
+interface InventorySection {
+  label: string;
+  manifestPath: string;
+  roots: PackageEntry[];
+  packages: PackageEntry[];
 }
 
 interface LicenseSummary {
@@ -57,49 +67,71 @@ interface OpenSourceLicenseTabProps {
 const OPEN_EXTERNAL_URL_EVENT = "waifudex://open-external-url";
 
 function toPackageEntry(pkg: { name: string; version: string }): PackageEntry {
-  const record = pkg as Record<string, string | undefined>;
+  const record = pkg as Record<string, string | string[] | undefined>;
   const entry: PackageEntry = {
     name: pkg.name,
     version: pkg.version,
   };
-  if (record.license !== undefined) entry.license = record.license;
-  if (record.repository !== undefined) entry.repository = record.repository;
-  if (record.author !== undefined) entry.author = record.author;
+  if (typeof record.specifier === "string") entry.specifier = record.specifier;
+  if (Array.isArray(record.license)) entry.license = record.license;
+  if (typeof record.repository === "string") entry.repository = record.repository;
+  if (typeof record.author === "string") entry.author = record.author;
   return entry;
 }
 
-function collectJsPackages(): PackageEntry[] {
-  return inventoryData.javascript.locked_packages.map(toPackageEntry);
+function collectSections(): InventorySection[] {
+  return [
+    inventoryData.frontend,
+    inventoryData.tauriClient,
+    inventoryData.inochi2dSys,
+    inventoryData.waifudexInox2dWasm,
+    inventoryData.waifudexMascot,
+  ].map((section) => ({
+    label: section.label,
+    manifestPath: section.manifestPath,
+    roots: section.roots.map(toPackageEntry),
+    packages: section.packages.map(toPackageEntry),
+  }));
 }
 
-function collectRustPackages(): PackageEntry[] {
-  const seen = new Set<string>();
-  const packages: PackageEntry[] = [];
+function normalizeSummaryToken(token: string): string | null {
+  const normalized = token.replace(/^[()]+|[()]+$/g, "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
 
-  for (const entry of inventoryData.rust) {
-    for (const pkg of entry.locked_packages) {
-      const key = `${pkg.name}@${pkg.version}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        packages.push(toPackageEntry(pkg));
-      }
-    }
+function expandSummaryLicenses(licenses?: string[]): string[] {
+  if (!licenses || licenses.length === 0) {
+    return ["Unknown"];
   }
 
-  return packages;
+  const expanded = licenses
+    .flatMap((license) => license.split(/\s+OR\s+|\s+AND\s+|\s*\/\s*/u))
+    .map(normalizeSummaryToken)
+    .filter((license): license is string => license !== null);
+
+  return expanded.length > 0 ? Array.from(new Set(expanded)) : ["Unknown"];
 }
 
 function collectLicenseSummaries(packages: PackageEntry[]): LicenseSummary[] {
   const counts = new Map<string, number>();
 
   for (const pkg of packages) {
-    const license = pkg.license ?? "Unknown";
-    counts.set(license, (counts.get(license) ?? 0) + 1);
+    for (const license of expandSummaryLicenses(pkg.license)) {
+      counts.set(license, (counts.get(license) ?? 0) + 1);
+    }
   }
 
   return Array.from(counts.entries())
     .map(([license, count]) => ({ license, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+function formatLicenses(licenses?: string[]): string {
+  if (!licenses || licenses.length === 0) {
+    return "Unknown";
+  }
+
+  return licenses.join(" OR ");
 }
 
 function openLink(url: string) {
@@ -123,8 +155,7 @@ function ChevronLeftIcon() {
 }
 
 function PackageCardItem({ pkg }: { pkg: PackageEntry }) {
-  const license = pkg.license ?? "Unknown";
-  const metaParts: string[] = [license];
+  const metaParts: string[] = [formatLicenses(pkg.license)];
   if (pkg.author) {
     metaParts.push(pkg.author);
   }
@@ -162,12 +193,13 @@ function PackageCardItem({ pkg }: { pkg: PackageEntry }) {
   );
 }
 
-export default function OpenSourceLicenseTab({ onBack }: OpenSourceLicenseTabProps) {
-  const jsPackages = useMemo(collectJsPackages, []);
-  const rustPackages = useMemo(collectRustPackages, []);
+export default function OpenSourceLicenseTab({
+  onBack,
+}: OpenSourceLicenseTabProps) {
+  const sections = useMemo(collectSections, []);
   const allPackages = useMemo(
-    () => [...jsPackages, ...rustPackages],
-    [jsPackages, rustPackages],
+    () => sections.flatMap((section) => section.packages),
+    [sections],
   );
   const licenseSummaries = useMemo(
     () => collectLicenseSummaries(allPackages),
@@ -206,44 +238,45 @@ export default function OpenSourceLicenseTab({ onBack }: OpenSourceLicenseTabPro
               <AccordionHeader>
                 <div className={accordionHeaderContent}>
                   <span>{summary.license}</span>
-                  <Badge appearance="outline" className={badgeStyle} size="small">
+                  <Badge
+                    appearance="outline"
+                    className={badgeStyle}
+                    size="small"
+                  >
                     {summary.count}
                   </Badge>
                 </div>
               </AccordionHeader>
               <AccordionPanel className={accordionPanel}>
-                <Caption1>
-                  License text will be added in a future update.
-                </Caption1>
+                <pre className={accordionPanelText}>
+                  {licenseTexts[summary.license] ?? licenseTexts.Unknown}
+                </pre>
               </AccordionPanel>
             </AccordionItem>
           ))}
         </Accordion>
       </section>
 
-      <section className={section}>
-        <div className={sectionHeader}>
-          <Subtitle2 className={sectionTitle}>JavaScript</Subtitle2>
-          <Caption1 className={sectionMeta}>{jsPackages.length} packages</Caption1>
-        </div>
-        <div className={packageList}>
-          {jsPackages.map((pkg) => (
-            <PackageCardItem key={`${pkg.name}@${pkg.version}`} pkg={pkg} />
-          ))}
-        </div>
-      </section>
-
-      <section className={section}>
-        <div className={sectionHeader}>
-          <Subtitle2 className={sectionTitle}>Rust</Subtitle2>
-          <Caption1 className={sectionMeta}>{rustPackages.length} packages</Caption1>
-        </div>
-        <div className={packageList}>
-          {rustPackages.map((pkg) => (
-            <PackageCardItem key={`${pkg.name}@${pkg.version}`} pkg={pkg} />
-          ))}
-        </div>
-      </section>
+      {sections.map((inventorySection) => (
+        <section className={section} key={inventorySection.label}>
+          <div className={sectionHeader}>
+            <Subtitle2 className={sectionTitle}>
+              {inventorySection.label}
+            </Subtitle2>
+            <Caption1 className={sectionMeta}>
+              {inventorySection.packages.length} packages
+            </Caption1>
+          </div>
+          <div className={packageList}>
+            {inventorySection.packages.map((pkg) => (
+              <PackageCardItem
+                key={`${inventorySection.label}:${pkg.name}@${pkg.version}`}
+                pkg={pkg}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
