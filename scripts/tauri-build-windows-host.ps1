@@ -29,7 +29,7 @@ try {
 
     node .\scripts\sync-app-version.mjs
     node .\scripts\generate-dependency-inventory.mjs
-    & .\scripts\build-inochi2d-windows-host.ps1
+    & .\scripts\build-inochi2d-windows.ps1
     node .\scripts\assert-windows-inochi2d-artifacts.mjs
 
     $vitePath = node -e "const path=require('node:path'); process.stdout.write(path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js'));"

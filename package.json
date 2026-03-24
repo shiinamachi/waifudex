@@ -10,7 +10,7 @@
     "dev": "node ./scripts/generate-dependency-inventory.mjs && vite",
     "build": "node ./scripts/generate-dependency-inventory.mjs && vite build",
     "inochi2d:build": "./scripts/build-inochi2d.sh",
-    "inochi2d:build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"%INIT_CWD%\\scripts\\build-inochi2d-windows-host.ps1\"",
+    "inochi2d:build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"%INIT_CWD%\\scripts\\build-inochi2d-windows.ps1\"",
     "preview": "vite preview",
     "check": "node ./scripts/generate-dependency-inventory.mjs && tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./tsconfig.node.json",
     "tauri": "tauri",
