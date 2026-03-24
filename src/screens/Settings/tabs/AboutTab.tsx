@@ -5,12 +5,7 @@ import packageJson from "../../../../package.json";
 export default function AboutTab() {
   return (
     <div className={tabsContainer}>
-      <SettingItem
-        title="Version"
-        description="waifudex App version"
-        type="text"
-        value={packageJson.version}
-      />
+      <SettingItem title="Version" type="text" value={packageJson.version} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { winUiSwitch } from "./setting-item.css";
 
 interface BaseSettingItemProps {
   title: string;
-  description: string;
+  description?: string;
 }
 
 interface TextSettingItemProps extends BaseSettingItemProps {
