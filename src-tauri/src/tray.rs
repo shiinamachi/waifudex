@@ -7,25 +7,18 @@ use tauri::{
 const TRAY_ID: &str = "waifudex-tray";
 const ALWAYS_ON_TOP_ID: &str = "always-on-top";
 const CHARACTER_VISIBILITY_ID: &str = "character-visibility";
-const RESTART_UPDATE_ID: &str = "restart-update";
 const SETTINGS_ID: &str = "settings";
 
 pub struct TraySettingsState<R: Runtime> {
     always_on_top_item: CheckMenuItem<R>,
     character_visibility_item: MenuItem<R>,
-    restart_update_item: MenuItem<R>,
 }
 
 impl<R: Runtime> TraySettingsState<R> {
-    fn new(
-        always_on_top_item: CheckMenuItem<R>,
-        character_visibility_item: MenuItem<R>,
-        restart_update_item: MenuItem<R>,
-    ) -> Self {
+    fn new(always_on_top_item: CheckMenuItem<R>, character_visibility_item: MenuItem<R>) -> Self {
         Self {
             always_on_top_item,
             character_visibility_item,
-            restart_update_item,
         }
     }
 
@@ -36,13 +29,6 @@ impl<R: Runtime> TraySettingsState<R> {
     fn sync_character_visibility(&self, visible: bool) -> tauri::Result<()> {
         self.character_visibility_item
             .set_text(character_toggle_label(visible))
-    }
-
-    fn sync_restart_update(&self, ready: bool) -> tauri::Result<()> {
-        self.restart_update_item
-            .set_text(update_restart_label(ready))?;
-        self.restart_update_item
-            .set_enabled(should_enable_update_restart_item(ready))
     }
 }
 
@@ -64,18 +50,10 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let settings_item = MenuItem::with_id(app, SETTINGS_ID, "Settings", true, None::<&str>)?;
-    let restart_update_item = MenuItem::with_id(
-        app,
-        RESTART_UPDATE_ID,
-        update_restart_label(crate::app_update::is_update_ready(app)),
-        should_enable_update_restart_item(crate::app_update::is_update_ready(app)),
-        None::<&str>,
-    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = MenuBuilder::new(app)
         .item(&character_visibility_item)
         .separator()
-        .item(&restart_update_item)
         .item(&settings_item)
         .item(&always_on_top_item)
         .separator()
@@ -85,7 +63,6 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     app.manage(TraySettingsState::new(
         always_on_top_item,
         character_visibility_item,
-        restart_update_item,
     ));
 
     let mut tray = TrayIconBuilder::with_id(TRAY_ID).menu(&menu);
@@ -119,9 +96,6 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             SETTINGS_ID => {
                 let _ = crate::window::open_settings_window(app);
             }
-            RESTART_UPDATE_ID => {
-                let _ = crate::app_update::restart_to_apply_update(app.clone());
-            }
             "quit" => {
                 remove_tray_icon(app);
                 app.exit(0);
@@ -131,7 +105,6 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .build(app)?;
 
     let _ = sync_character_toggle_menu_item(app);
-    let _ = sync_update_restart_menu_item(app);
 
     Ok(())
 }
@@ -147,20 +120,6 @@ pub fn sync_always_on_top_menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Re
 pub fn sync_character_toggle_menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(state) = app.try_state::<TraySettingsState<R>>() {
         state.sync_character_visibility(crate::window::is_character_window_visible(app)?)?;
-    }
-
-    Ok(())
-}
-
-pub fn sync_update_restart_menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    if let Some(state) = app.try_state::<TraySettingsState<R>>() {
-        let ready = app
-            .try_state::<crate::app_update::AppUpdateState>()
-            .map(|update_state| {
-                update_state.snapshot().status == crate::app_update::AppUpdateStatus::ReadyToRestart
-            })
-            .unwrap_or(false);
-        state.sync_restart_update(ready)?;
     }
 
     Ok(())
@@ -188,6 +147,11 @@ fn should_include_window_toggle_menu_item() -> bool {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
+fn should_include_update_restart_menu_item() -> bool {
+    false
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 fn should_toggle_window_on_left_click() -> bool {
     false
 }
@@ -198,18 +162,6 @@ fn character_toggle_label(visible: bool) -> &'static str {
     } else {
         "Show character"
     }
-}
-
-fn update_restart_label(ready: bool) -> &'static str {
-    if ready {
-        "Restart to update"
-    } else {
-        "No update ready"
-    }
-}
-
-fn should_enable_update_restart_item(ready: bool) -> bool {
-    ready
 }
 
 #[cfg(test)]
@@ -242,14 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn updater_restart_label_only_uses_restart_text_when_update_is_ready() {
-        assert_eq!(update_restart_label(true), "Restart to update");
-        assert_ne!(update_restart_label(false), "Restart to update");
-    }
-
-    #[test]
-    fn updater_restart_item_is_disabled_without_a_pending_update() {
-        assert!(should_enable_update_restart_item(true));
-        assert!(!should_enable_update_restart_item(false));
+    fn tray_policy_excludes_updater_restart_menu_item() {
+        assert!(!should_include_update_restart_menu_item());
     }
 }

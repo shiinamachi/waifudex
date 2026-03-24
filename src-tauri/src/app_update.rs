@@ -256,12 +256,10 @@ async fn run_update_check<R: Runtime>(app: AppHandle<R>) {
         Ok(()) => {
             app.state::<AppUpdateState>()
                 .mark_ready_to_restart(Some(version));
-            let _ = crate::tray::sync_update_restart_menu_item(&app);
             prompt_for_restart_if_needed(app);
         }
         Err(error) => {
             app.state::<AppUpdateState>().mark_error(error.to_string());
-            let _ = crate::tray::sync_update_restart_menu_item(&app);
         }
     }
 }
