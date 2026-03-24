@@ -5,7 +5,7 @@ rust = { version = "1.94.0", profile = "minimal", components = "rustfmt", target
 
 [tasks."setup:windows-host-build"]
 description = "Install and prepare native Windows host prerequisites for pnpm inochi2d:build:windows, pnpm tauri:build:windows, and pnpm tauri:release:windows"
-run = 'powershell -NoProfile -ExecutionPolicy Bypass -File ".\scripts\setup-windows-host-build-env.ps1"'
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-windows-host-build-env.ps1'
 
 [tasks."setup:wsl-dev-windows"]
 description = "Install and prepare Ubuntu WSL prerequisites for pnpm tauri:dev:wsl"
