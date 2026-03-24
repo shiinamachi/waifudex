@@ -246,3 +246,20 @@ if (-not (Test-CommandAvailable "link.exe")) {
 if ($LASTEXITCODE -ne 0) {
     throw "cargo xwin env --target x86_64-pc-windows-msvc failed with exit code $LASTEXITCODE"
 }
+
+$xwinDir = if ($env:XWIN_DIR) {
+    $env:XWIN_DIR
+} else {
+    Join-Path $env:USERPROFILE ".cache\cargo-xwin\xwin"
+}
+
+if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
+    & cargo xwin splat --output $xwinDir --target x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo xwin splat --output $xwinDir --target x86_64-pc-windows-msvc failed with exit code $LASTEXITCODE"
+    }
+}
+
+if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
+    throw "cargo-xwin sysroot is still missing after setup at $xwinDir"
+}
