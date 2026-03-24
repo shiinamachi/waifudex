@@ -15,6 +15,8 @@ fi
 export TAURI_DEV_HOST
 export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER=../scripts/wsl-exec.sh
 
+cargo clean --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+
 pnpm inochi2d:build:windows
 
 exec pnpm tauri dev \
