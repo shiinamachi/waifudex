@@ -248,9 +248,10 @@ exit /b %errorlevel%
 }
 
 function Build-RuntimeLibs {
+    $xwinDirForFlags = $xwinDir -replace "\\", "/"
     $runtimeDFlags = "--mtriple=$targetTriple;--linker=lld-link;--mscrtlib=msvcrt;-link-defaultlib-shared=false"
-    $runtimeCFlags = "--target=$targetTriple;-Wno-unused-command-line-argument;-fuse-ld=lld-link;-isystem;$xwinDir/crt/include;-isystem;$xwinDir/sdk/include/ucrt;-isystem;$xwinDir/sdk/include/um;-isystem;$xwinDir/sdk/include/shared;-isystem;$xwinDir/sdk/include/winrt"
-    $runtimeLinkerFlags = "-fuse-ld=lld-link;/LIBPATH:$xwinDir/crt/lib/x86_64;/LIBPATH:$xwinDir/sdk/lib/um/x86_64;/LIBPATH:$xwinDir/sdk/lib/ucrt/x86_64"
+    $runtimeCFlags = "--target=$targetTriple;-Wno-unused-command-line-argument;-fuse-ld=lld-link;-isystem;$xwinDirForFlags/crt/include;-isystem;$xwinDirForFlags/sdk/include/ucrt;-isystem;$xwinDirForFlags/sdk/include/um;-isystem;$xwinDirForFlags/sdk/include/shared;-isystem;$xwinDirForFlags/sdk/include/winrt"
+    $runtimeLinkerFlags = "-fuse-ld=lld-link;/LIBPATH:$xwinDirForFlags/crt/lib/x86_64;/LIBPATH:$xwinDirForFlags/sdk/lib/um/x86_64;/LIBPATH:$xwinDirForFlags/sdk/lib/ucrt/x86_64"
 
     Remove-Item $runtimeBuildDir, $runtimeLibDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $runtimeBuildDir, $runtimeLibDir | Out-Null
@@ -348,6 +349,7 @@ function Build-WindowsInochi2d {
         [string]$Dub
     )
 
+    $xwinDirForFlags = $xwinDir -replace "\\", "/"
     $importPaths = (& $Dub describe "--compiler=$Ldc2" --config=yesgl --data=import-paths --data-list)
     $stringImportPaths = (& $Dub describe "--compiler=$Ldc2" --config=yesgl --data=string-import-paths --data-list)
     $versions = (& $Dub describe "--compiler=$Ldc2" --config=yesgl --data=versions --data-list)
@@ -421,9 +423,9 @@ for path in filter(None, os.environ["LINKER_FILES"].splitlines()):
         $topObj,
         "-L/IMPLIB:$libPath",
         "-L/LIBPATH:$runtimeLibDir",
-        "-L/LIBPATH:$xwinDir/crt/lib/x86_64",
-        "-L/LIBPATH:$xwinDir/sdk/lib/um/x86_64",
-        "-L/LIBPATH:$xwinDir/sdk/lib/ucrt/x86_64"
+        "-L/LIBPATH:$xwinDirForFlags/crt/lib/x86_64",
+        "-L/LIBPATH:$xwinDirForFlags/sdk/lib/um/x86_64",
+        "-L/LIBPATH:$xwinDirForFlags/sdk/lib/ucrt/x86_64"
     )
 
     Get-ChildItem -LiteralPath $workDir -Filter *.lib | ForEach-Object {
