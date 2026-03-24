@@ -260,8 +260,10 @@ function Build-RuntimeLibs {
 
     $previousCc = $env:CC
     $previousCxx = $env:CXX
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
     $env:CC = "clang-cl"
     $env:CXX = "clang-cl"
+    $PSNativeCommandUseErrorActionPreference = $false
 
     try {
         & ldc-build-runtime --ninja --buildDir $runtimeBuildDir `
@@ -297,6 +299,7 @@ function Build-RuntimeLibs {
     finally {
         $env:CC = $previousCc
         $env:CXX = $previousCxx
+        $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
     }
 
 Invoke-PythonScript -Arguments @($runtimeBuildDir, $runtimeLibDir) -Script @'
