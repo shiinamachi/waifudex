@@ -83,7 +83,15 @@ function Ensure-HostGitver {
         [string]$Ldc2
     )
 
-    $dubPackagesDir = Join-Path $homeDir ".dub\packages"
+    $dubPackagesDir = if ($env:DUB_HOME) {
+        Join-Path $env:DUB_HOME "packages"
+    } elseif ($env:DPATH) {
+        Join-Path $env:DPATH "dub\packages"
+    } elseif ($env:LOCALAPPDATA) {
+        Join-Path $env:LOCALAPPDATA "dub\packages"
+    } else {
+        Join-Path $homeDir ".dub\packages"
+    }
     $gitverPackage = "gitver@1.7.2"
     if (-not (Test-Path $dubPackagesDir)) {
         New-Item -ItemType Directory -Force -Path $dubPackagesDir | Out-Null
