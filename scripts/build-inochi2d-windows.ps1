@@ -45,6 +45,70 @@ function Require-Command {
     $command.Source
 }
 
+function Test-CommandRuns {
+    param(
+        [string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+    $previousErrorAction = $ErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    $ErrorActionPreference = "Continue"
+
+    try {
+        & $Command @Arguments *> $null
+        $LASTEXITCODE -eq 0
+    }
+    catch {
+        $false
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+        $ErrorActionPreference = $previousErrorAction
+    }
+}
+
+function Resolve-PythonCommand {
+    $candidates = [System.Collections.Generic.List[object]]::new()
+
+    if (Get-Command "mise" -ErrorAction SilentlyContinue) {
+        $candidates.Add([pscustomobject]@{
+                Command   = "mise"
+                Arguments = @("exec", "--", "python")
+            })
+    }
+
+    if (Get-Command "python" -ErrorAction SilentlyContinue) {
+        $candidates.Add([pscustomobject]@{
+                Command   = "python"
+                Arguments = @()
+            })
+    }
+
+    if (Get-Command "py" -ErrorAction SilentlyContinue) {
+        $candidates.Add([pscustomobject]@{
+                Command   = "py"
+                Arguments = @("-3")
+            })
+    }
+
+    if (Get-Command "python3" -ErrorAction SilentlyContinue) {
+        $candidates.Add([pscustomobject]@{
+                Command   = "python3"
+                Arguments = @()
+            })
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-CommandRuns -Command $candidate.Command -Arguments ($candidate.Arguments + @("--version"))) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Invoke-PythonScript {
     param(
         [string]$Script,
@@ -58,13 +122,18 @@ function Invoke-PythonScript {
     Set-Content -LiteralPath $scriptPath -Value $Script -Encoding utf8
 
     try {
+        $pythonCommand = Resolve-PythonCommand
+        if (-not $pythonCommand) {
+            throw "missing required Python runtime; install the pinned mise python or make python/py/python3 executable in this shell"
+        }
+
         $currentEnvironment = @{}
         foreach ($entry in $Environment.GetEnumerator()) {
             $currentEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key)
             [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value)
         }
 
-        & python $scriptPath @Arguments
+        & $pythonCommand.Command @($pythonCommand.Arguments + @($scriptPath) + $Arguments)
         if ($LASTEXITCODE -ne 0) {
             throw "python script failed with exit code $LASTEXITCODE"
         }
@@ -485,11 +554,14 @@ Require-Command "ldc-build-runtime" | Out-Null
 Require-Command "llvm-ar" | Out-Null
 Require-Command "llvm-lib" | Out-Null
 Require-Command "ninja" | Out-Null
-Require-Command "python" | Out-Null
 Require-Command "cmake" | Out-Null
 Require-Command "clang" | Out-Null
 Require-Command "clang-cl" | Out-Null
 Require-Command "lld-link" | Out-Null
+
+if (-not (Resolve-PythonCommand)) {
+    throw "missing required Python runtime; run mise install or make python/py/python3 executable in this shell"
+}
 
 & $cargo xwin env --target $targetTriple 2>&1 | Out-Null
 

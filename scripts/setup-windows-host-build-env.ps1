@@ -9,6 +9,70 @@ function Test-CommandAvailable {
     [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Test-CommandRuns {
+    param(
+        [string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+    $previousErrorAction = $ErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    $ErrorActionPreference = "Continue"
+
+    try {
+        & $Command @Arguments *> $null
+        $LASTEXITCODE -eq 0
+    }
+    catch {
+        $false
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+        $ErrorActionPreference = $previousErrorAction
+    }
+}
+
+function Resolve-PythonCommand {
+    $candidates = [System.Collections.Generic.List[object]]::new()
+
+    if (Test-CommandAvailable "mise") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "mise"
+                Arguments = @("exec", "--", "python")
+            })
+    }
+
+    if (Test-CommandAvailable "python") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "python"
+                Arguments = @()
+            })
+    }
+
+    if (Test-CommandAvailable "py") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "py"
+                Arguments = @("-3")
+            })
+    }
+
+    if (Test-CommandAvailable "python3") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "python3"
+                Arguments = @()
+            })
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-CommandRuns -Command $candidate.Command -Arguments ($candidate.Arguments + @("--version"))) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Refresh-PathFromMachine {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -171,7 +235,7 @@ if (Test-CommandAvailable "rustup") {
     }
 }
 
-if (-not (Test-CommandAvailable "python")) {
+if (-not (Resolve-PythonCommand)) {
     Install-WingetPackage -Id "Python.Python.3.12"
 }
 
@@ -236,6 +300,10 @@ if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-bui
 Failed to install LDC automatically.
 Install an LDC distribution that provides both ldc2 and ldc-build-runtime, then rerun the command.
 "@
+}
+
+if (-not (Resolve-PythonCommand)) {
+    throw "Failed to provision a usable Python runtime. Run mise install again or verify the Python launcher on this Windows host."
 }
 
 if (-not (Test-CommandAvailable "link.exe")) {

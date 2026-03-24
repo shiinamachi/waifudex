@@ -9,6 +9,70 @@ function Test-CommandAvailable {
     [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Test-CommandRuns {
+    param(
+        [string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+    $previousErrorAction = $ErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    $ErrorActionPreference = "Continue"
+
+    try {
+        & $Command @Arguments *> $null
+        $LASTEXITCODE -eq 0
+    }
+    catch {
+        $false
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+        $ErrorActionPreference = $previousErrorAction
+    }
+}
+
+function Resolve-PythonCommand {
+    $candidates = [System.Collections.Generic.List[object]]::new()
+
+    if (Test-CommandAvailable "mise") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "mise"
+                Arguments = @("exec", "--", "python")
+            })
+    }
+
+    if (Test-CommandAvailable "python") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "python"
+                Arguments = @()
+            })
+    }
+
+    if (Test-CommandAvailable "py") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "py"
+                Arguments = @("-3")
+            })
+    }
+
+    if (Test-CommandAvailable "python3") {
+        $candidates.Add([pscustomobject]@{
+                Command   = "python3"
+                Arguments = @()
+            })
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-CommandRuns -Command $candidate.Command -Arguments ($candidate.Arguments + @("--version"))) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Import-LlvmBin {
     $candidates = @(
         (Join-Path ${env:ProgramFiles} "LLVM\bin"),
@@ -64,7 +128,6 @@ function Get-MissingWindowsBuildRequirements {
         "cargo",
         "rustup",
         "cargo-xwin",
-        "python",
         "cmake",
         "ninja",
         "clang",
@@ -80,6 +143,10 @@ function Get-MissingWindowsBuildRequirements {
         if (-not (Test-CommandAvailable $command)) {
             $missing.Add($command)
         }
+    }
+
+    if (-not (Resolve-PythonCommand)) {
+        $missing.Add("python-runtime")
     }
 
     if (-not (Test-Path ".\node_modules")) {
