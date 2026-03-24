@@ -1,38 +1,38 @@
 {
-    "name": "waifudex",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "packageManager": "pnpm@10.32.1",
-    "scripts": {
-        "dev": "vite",
-        "build": "vite build",
-        "inochi2d:build": "./scripts/build-inochi2d.sh",
-        "inochi2d:build:windows": "./scripts/build-inochi2d-windows.sh",
-        "preview": "vite preview",
-        "check": "tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./tsconfig.node.json",
-        "tauri": "tauri",
-        "tauri:dev": "tauri dev",
-        "tauri:dev:windows": "./scripts/tauri-dev-windows.sh",
-        "tauri:build": "tauri build",
-        "tauri:build:windows": "pnpm inochi2d:build:windows && pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle"
-    },
-    "dependencies": {
-        "@fluentui/react-components": "9.73.4",
-        "@tauri-apps/api": "2.10.1",
-        "react": "19.2.4",
-        "react-dom": "19.2.4",
-        "the-new-css-reset": "1.11.3"
-    },
-    "devDependencies": {
-        "@tauri-apps/cli": "2.10.1",
-        "@types/node": "25.5.0",
-        "@types/react": "19.2.14",
-        "@types/react-dom": "19.2.3",
-        "@vanilla-extract/css": "1.20.0",
-        "@vanilla-extract/vite-plugin": "5.2.1",
-        "@vitejs/plugin-react": "6.0.1",
-        "typescript": "5.9.3",
-        "vite": "8.0.0"
-    }
+  "name": "waifudex",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "inochi2d:build": "./scripts/build-inochi2d.sh",
+    "inochi2d:build:windows": "./scripts/build-inochi2d-windows.sh",
+    "preview": "vite preview",
+    "check": "tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./tsconfig.node.json",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:dev:windows": "./scripts/tauri-dev-windows.sh",
+    "tauri:build": "tauri build",
+    "tauri:build:windows": "pnpm inochi2d:build:windows && pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle"
+  },
+  "dependencies": {
+    "@fluentui/react-components": "9.73.4",
+    "@tauri-apps/api": "2.10.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "the-new-css-reset": "1.11.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.10.1",
+    "@types/node": "25.5.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vanilla-extract/css": "1.20.0",
+    "@vanilla-extract/vite-plugin": "5.2.1",
+    "@vitejs/plugin-react": "6.0.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.0"
+  }
 }
