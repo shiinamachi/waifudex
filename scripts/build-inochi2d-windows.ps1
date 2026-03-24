@@ -252,6 +252,8 @@ function Build-RuntimeLibs {
     $runtimeDFlags = "--mtriple=$targetTriple;--linker=lld-link;--mscrtlib=msvcrt;-link-defaultlib-shared=false"
     $runtimeCFlags = "--target=$targetTriple;-Wno-unused-command-line-argument;-fuse-ld=lld-link;-isystem;$xwinDirForFlags/crt/include;-isystem;$xwinDirForFlags/sdk/include/ucrt;-isystem;$xwinDirForFlags/sdk/include/um;-isystem;$xwinDirForFlags/sdk/include/shared;-isystem;$xwinDirForFlags/sdk/include/winrt"
     $runtimeLinkerFlags = "-fuse-ld=lld-link;/LIBPATH:$xwinDirForFlags/crt/lib/x86_64;/LIBPATH:$xwinDirForFlags/sdk/lib/um/x86_64;/LIBPATH:$xwinDirForFlags/sdk/lib/ucrt/x86_64"
+    $runtimeConfigureLog = Join-Path $waifudexCacheDir "ldc-runtime-configure.log"
+    $runtimeNinjaLog = Join-Path $waifudexCacheDir "ldc-runtime-ninja.log"
 
     Remove-Item $runtimeBuildDir, $runtimeLibDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $runtimeBuildDir, $runtimeLibDir | Out-Null
@@ -266,16 +268,25 @@ function Build-RuntimeLibs {
             CMAKE_POLICY_VERSION_MINIMUM=3.5 `
             BUILD_SHARED_LIBS=OFF `
             HAVE_UNISTD_H=0 `
+            CMAKE_C_COMPILER=clang-cl `
+            CMAKE_CXX_COMPILER=clang-cl `
             --targetSystem "Windows;MSVC" `
             "--dFlags=$runtimeDFlags" `
             "--cFlags=$runtimeCFlags" `
             "--linkerFlags=$runtimeLinkerFlags" `
-            -j2 | Out-Null
+            -j2 *> $runtimeConfigureLog
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ldc-build-runtime configure failed; showing tail of $runtimeConfigureLog"
+            Get-Content -LiteralPath $runtimeConfigureLog -Tail 200
+            throw "failed to configure ldc runtime libraries"
+        }
 
         Push-Location $runtimeBuildDir
         try {
-            & ninja -k 0 | Out-Null
+            & ninja -k 0 -v *> $runtimeNinjaLog
             if ($LASTEXITCODE -ne 0) {
+                Write-Host "ninja failed; showing tail of $runtimeNinjaLog"
+                Get-Content -LiteralPath $runtimeNinjaLog -Tail 200
                 throw "failed to build ldc runtime libraries"
             }
         }
