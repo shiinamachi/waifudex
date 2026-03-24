@@ -83,8 +83,37 @@ function Ensure-HostGitver {
         [string]$Ldc2
     )
 
-    $hostGitverDir = Join-Path $homeDir ".dub\packages\gitver\1.7.2\gitver"
-    $hostGitverBin = Join-Path $hostGitverDir "out\gitver"
+    $dubPackagesDir = Join-Path $homeDir ".dub\packages"
+    if (-not (Test-Path $dubPackagesDir)) {
+        New-Item -ItemType Directory -Force -Path $dubPackagesDir | Out-Null
+    }
+
+    $hostGitverDir = Get-ChildItem -Path $dubPackagesDir -Directory -Recurse -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -eq "gitver" -and (Test-Path (Join-Path $_.FullName "dub.sdl"))
+        } |
+        Sort-Object FullName -Descending |
+        Select-Object -ExpandProperty FullName -First 1
+
+    if (-not $hostGitverDir) {
+        & $Dub fetch gitver "--version=1.7.2" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to fetch gitver package"
+        }
+
+        $hostGitverDir = Get-ChildItem -Path $dubPackagesDir -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -eq "gitver" -and (Test-Path (Join-Path $_.FullName "dub.sdl"))
+            } |
+            Sort-Object FullName -Descending |
+            Select-Object -ExpandProperty FullName -First 1
+    }
+
+    if (-not $hostGitverDir) {
+        throw "failed to locate fetched gitver package directory under $dubPackagesDir"
+    }
+
+    $hostGitverBin = Join-Path $hostGitverDir "out\gitver.exe"
 
     New-Item -ItemType Directory -Force -Path $wrapperDir | Out-Null
     Push-Location $hostGitverDir
@@ -96,6 +125,10 @@ function Ensure-HostGitver {
     }
     finally {
         Pop-Location
+    }
+
+    if (-not (Test-Path $hostGitverBin)) {
+        throw "failed to build host gitver executable at $hostGitverBin"
     }
 
     $wrapperPath = Join-Path $wrapperDir "dub.cmd"
