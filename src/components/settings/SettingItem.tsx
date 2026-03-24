@@ -30,7 +30,7 @@ interface SwitchSettingItemProps extends BaseSettingItemProps {
 
 interface LinkSettingItemProps extends BaseSettingItemProps {
   type: "link";
-  link: string;
+  link?: string;
   onAction?: () => void;
   children?: never;
 }
@@ -109,7 +109,7 @@ function renderDescription(description?: string) {
 }
 
 function handleLinkClick(props: LinkSettingItemProps) {
-  if (isExternalLink(props.link)) {
+  if (props.link && isExternalLink(props.link)) {
     void emit(OPEN_EXTERNAL_URL_EVENT, { url: props.link }).catch((error: unknown) =>
       console.error("openUrl failed:", error),
     );
