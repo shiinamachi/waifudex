@@ -28,7 +28,7 @@ function Get-MissingWindowsBuildRequirements {
         "dub",
         "ldc2",
         "ldc-build-runtime",
-        "link"
+        "link.exe"
     )) {
         if (-not (Test-CommandAvailable $command)) {
             $missing.Add($command)
@@ -41,6 +41,8 @@ function Get-MissingWindowsBuildRequirements {
 
     return $missing
 }
+
+Import-MsvcDevShell | Out-Null
 
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -eq 0) {

@@ -75,14 +75,17 @@ if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-l
     Install-WingetPackage -Id "LLVM.LLVM"
 }
 
-if (-not (Test-CommandAvailable "link")) {
+if (-not (Test-CommandAvailable "link.exe")) {
     Install-WingetPackage -Id "Microsoft.VisualStudio.2022.BuildTools" -Arguments @(
         "--override",
         "--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
     )
 }
 
-Import-MsvcDevShell | Out-Null
+$importedMsvc = Import-MsvcDevShell
+if (-not $importedMsvc) {
+    throw "Visual Studio Build Tools may not be installed or discoverable. Could not import the MSVC developer shell."
+}
 
 if (-not (Test-CommandAvailable "dub")) {
     Install-WingetPackage -Id "Dlang.DMD"
@@ -100,7 +103,7 @@ Install an LDC distribution that provides both ldc2 and ldc-build-runtime, then 
     }
 }
 
-if (-not (Test-CommandAvailable "link")) {
+if (-not (Test-CommandAvailable "link.exe")) {
     throw "Visual Studio Build Tools were installed, but link.exe is still not available in the current environment. Open a new shell or verify the VC++ workload installation."
 }
 
