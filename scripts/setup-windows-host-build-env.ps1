@@ -74,6 +74,7 @@ function Import-ChocolateyBin {
 function Ensure-Chocolatey {
     if (Test-CommandAvailable "choco") {
         Import-ChocolateyBin
+        Refresh-PathFromMachine
         return
     }
 
@@ -81,6 +82,7 @@ function Ensure-Chocolatey {
     Invoke-Expression ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))
 
     Import-ChocolateyBin
+    Refresh-PathFromMachine
 
     if (-not (Test-CommandAvailable "choco")) {
         throw "Chocolatey installation completed, but choco is still not available in the current environment."
@@ -97,6 +99,7 @@ function Install-ChocolateyPackage {
     }
 
     Import-ChocolateyBin
+    Refresh-PathFromMachine
 }
 
 & mise install
