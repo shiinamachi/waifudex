@@ -74,7 +74,8 @@ function toPackageEntry(pkg: { name: string; version: string }): PackageEntry {
   };
   if (typeof record.specifier === "string") entry.specifier = record.specifier;
   if (Array.isArray(record.license)) entry.license = record.license;
-  if (typeof record.repository === "string") entry.repository = record.repository;
+  if (typeof record.repository === "string")
+    entry.repository = record.repository;
   if (typeof record.author === "string") entry.author = record.author;
   return entry;
 }
@@ -218,8 +219,8 @@ export default function OpenSourceLicenseTab({
           <div className={headerContent}>
             <Subtitle2 className={pageTitle}>Open Source License</Subtitle2>
             <Caption1 className={notice}>
-              This application uses open source software. The following lists
-              the licenses and packages used in this project.
+              waifudex uses open source software. The following lists the
+              licenses and packages used in this project.
             </Caption1>
           </div>
         </div>
