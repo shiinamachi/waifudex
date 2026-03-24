@@ -5,7 +5,7 @@ import {
   CardHeader,
   Switch,
 } from "@fluentui/react-components";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { winUiSwitch } from "./setting-item.css";
 
@@ -31,7 +31,7 @@ interface CustomSettingItemProps extends BaseSettingItemProps {
   type?: never;
   value?: never;
   onChange?: never;
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 type SettingItemProps =
@@ -55,6 +55,19 @@ function SettingActionItem(props: SettingActionItemProps) {
   return <Caption1>{props.value}</Caption1>;
 }
 
+function renderDescription(description?: string) {
+  if (description === undefined) {
+    return undefined;
+  }
+
+  return description.replaceAll("\\n", "\n").split(/\r?\n/).map((line, index) => (
+    <Fragment key={`${line}-${index}`}>
+      {index > 0 ? <br /> : null}
+      {line}
+    </Fragment>
+  ));
+}
+
 export default function SettingItem(props: SettingItemProps) {
   const { title, description } = props;
   const action = props.type ? <SettingActionItem {...props} /> : null;
@@ -63,7 +76,7 @@ export default function SettingItem(props: SettingItemProps) {
     <Card appearance="filled">
       <CardHeader
         header={<Body1>{title}</Body1>}
-        description={<Caption1>{description}</Caption1>}
+        description={<Caption1>{renderDescription(description)}</Caption1>}
         action={action}
       />
       {!props.type && props.children}
