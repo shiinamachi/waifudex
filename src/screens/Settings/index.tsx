@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Divider,
   Tab,
   TabList,
   type SelectTabData,
@@ -8,8 +9,16 @@ import {
 } from "@fluentui/react-components";
 
 import CommonLayout from "../../components/layouts/CommonLayout";
-import { layout, panel, panelScroll, tabList } from "./index.css";
+import {
+  layout,
+  panel,
+  panelScroll,
+  tabList,
+  tabListFooter,
+  tabListFooterTab,
+} from "./index.css";
 import SettingsDisplayTab from "./tabs/SettingsDisplayTab";
+import AboutTab from "./tabs/AboutTab";
 
 const DEFAULT_TAB: TabValue = "display";
 
@@ -31,11 +40,18 @@ export default function Settings() {
           vertical
         >
           <Tab value="display">Display</Tab>
+          <div className={tabListFooter}>
+            <Divider />
+            <Tab className={tabListFooterTab} value="about">
+              About
+            </Tab>
+          </div>
         </TabList>
 
         <div className={panel}>
           <div className={panelScroll}>
             {selectedTab === "display" && <SettingsDisplayTab />}
+            {selectedTab === "about" && <AboutTab />}
           </div>
         </div>
       </div>

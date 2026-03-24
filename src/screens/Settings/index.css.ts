@@ -12,9 +12,24 @@ export const layout = style({
 
 export const tabList = style({
   alignSelf: "start",
+  boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
   height: "100%",
   minHeight: 0,
   padding: tokens.spacingHorizontalM,
+});
+
+export const tabListFooter = style({
+  display: "flex",
+  flexDirection: "column",
+  marginTop: "auto",
+  width: "100%",
+});
+
+export const tabListFooterTab = style({
+  justifyContent: "flex-start",
+  width: "100%",
 });
 
 export const panel = style({

@@ -14,6 +14,12 @@ interface BaseSettingItemProps {
   description: string;
 }
 
+interface TextSettingItemProps extends BaseSettingItemProps {
+  type: "text";
+  value: string;
+  children?: never;
+}
+
 interface SwitchSettingItemProps extends BaseSettingItemProps {
   type: "switch";
   value: boolean;
@@ -28,37 +34,30 @@ interface CustomSettingItemProps extends BaseSettingItemProps {
   children: ReactNode;
 }
 
-type SettingItemProps = SwitchSettingItemProps | CustomSettingItemProps;
+type SettingItemProps =
+  | TextSettingItemProps
+  | SwitchSettingItemProps
+  | CustomSettingItemProps;
 
-type SettingActionItemProps = Pick<
-  SwitchSettingItemProps,
-  "type" | "value" | "onChange"
->;
+type SettingActionItemProps = TextSettingItemProps | SwitchSettingItemProps;
 
-function SettingActionItem({ type, value, onChange }: SettingActionItemProps) {
-  if (type === "switch") {
+function SettingActionItem(props: SettingActionItemProps) {
+  if (props.type === "switch") {
     return (
       <Switch
-        checked={value}
+        checked={props.value}
         className={winUiSwitch}
-        onChange={(_event, data) => onChange(data.checked)}
+        onChange={(_event, data) => props.onChange(data.checked)}
       />
     );
   }
 
-  return null;
+  return <Caption1>{props.value}</Caption1>;
 }
 
 export default function SettingItem(props: SettingItemProps) {
   const { title, description } = props;
-  const action =
-    props.type === "switch" ? (
-      <SettingActionItem
-        type={props.type}
-        value={props.value}
-        onChange={props.onChange}
-      />
-    ) : null;
+  const action = props.type ? <SettingActionItem {...props} /> : null;
 
   return (
     <Card appearance="filled">
