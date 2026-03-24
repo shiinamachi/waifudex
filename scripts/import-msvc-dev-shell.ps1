@@ -10,6 +10,12 @@ function Get-VsWherePath {
 }
 
 function Import-MsvcDevShell {
+    # vcvars64.bat sets VSCMD_VER; skip if already imported to avoid
+    # duplicating PATH entries and exceeding cmd.exe's 8191-char limit.
+    if ($env:VSCMD_VER) {
+        return $true
+    }
+
     $vswhere = Get-VsWherePath
     if (-not $vswhere) {
         return $false

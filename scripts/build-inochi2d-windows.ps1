@@ -164,7 +164,7 @@ function Ensure-HostGitver {
     $hostGitverBin = Find-HostGitverBin -SearchRoot $hostGitverDir
 
     if (-not $hostGitverDir -and -not $hostGitverBin) {
-        & $Dub fetch $gitverPackage | Out-Null
+        & $Dub fetch $gitverPackage 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "failed to fetch gitver package"
         }
@@ -181,7 +181,7 @@ function Ensure-HostGitver {
     if ($hostGitverDir) {
         Push-Location $hostGitverDir
         try {
-            & $Dub build "--compiler=$Ldc2" --force | Out-Null
+            & $Dub build "--compiler=$Ldc2" --force 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "failed to build host gitver"
             }
@@ -261,9 +261,15 @@ function Build-RuntimeLibs {
     $previousCc = $env:CC
     $previousCxx = $env:CXX
     $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+    $previousErrorAction = $ErrorActionPreference
     $env:CC = "clang-cl"
     $env:CXX = "clang-cl"
     $PSNativeCommandUseErrorActionPreference = $false
+    # Stderr from ldc-build-runtime/ninja (e.g. CMake warnings) creates
+    # ErrorRecords that become terminating errors under "Stop" preference
+    # even when *> redirects all streams. Use "Continue" so stderr flows
+    # into the log file and exit codes are checked explicitly.
+    $ErrorActionPreference = "Continue"
 
     try {
         & ldc-build-runtime --ninja --buildDir $runtimeBuildDir `
@@ -300,6 +306,7 @@ function Build-RuntimeLibs {
         $env:CC = $previousCc
         $env:CXX = $previousCxx
         $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+        $ErrorActionPreference = $previousErrorAction
     }
 
 Invoke-PythonScript -Arguments @($runtimeBuildDir, $runtimeLibDir) -Script @'
@@ -484,7 +491,7 @@ Require-Command "clang" | Out-Null
 Require-Command "clang-cl" | Out-Null
 Require-Command "lld-link" | Out-Null
 
-& $cargo xwin env --target $targetTriple | Out-Null
+& $cargo xwin env --target $targetTriple 2>&1 | Out-Null
 
 if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
     throw "missing cargo-xwin sysroot at $xwinDir; run cargo xwin env --target $targetTriple once first"
@@ -499,14 +506,23 @@ $env:PATH = "$wrapperDir;$homeDir\.cache\cargo-xwin;$previousPath"
 $env:DFLAGS = "--mtriple=$targetTriple --linker=lld-link --mscrtlib=msvcrt -link-defaultlib-shared=false"
 
 Push-Location $sourceDir
+$previousCrossCompileErrorAction = $ErrorActionPreference
+# Native cross-compilation tools (dub, ldc2) write warnings/progress to
+# stderr which PowerShell wraps as ErrorRecords. Under "Stop" preference
+# these become terminating errors. Use "Continue" and check exit codes.
+$ErrorActionPreference = "Continue"
 try {
-    & (Join-Path $wrapperDir "dub.cmd") build "--compiler=$ldc2" --config=yesgl --arch=x86_64 --force | Out-Null
+    & (Join-Path $wrapperDir "dub.cmd") build "--compiler=$ldc2" --config=yesgl --arch=x86_64 --force 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "failed to build inochi2d-c with dub (exit code $LASTEXITCODE)"
+    }
     Build-WindowsInochi2d -Ldc2 $ldc2 -Dub (Join-Path $wrapperDir "dub.cmd")
 }
 finally {
     Pop-Location
     $env:PATH = $previousPath
     $env:DFLAGS = $previousDFlags
+    $ErrorActionPreference = $previousCrossCompileErrorAction
 }
 
 Get-Item (Join-Path $outDir "inochi2d-c.dll"), (Join-Path $outDir "inochi2d-c.lib") | ForEach-Object {
