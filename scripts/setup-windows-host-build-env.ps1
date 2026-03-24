@@ -137,6 +137,7 @@ if (-not (Test-CommandAvailable "ninja")) {
 
 if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-lib") -or -not (Test-CommandAvailable "lld-link")) {
     Install-WingetPackage -Id "LLVM.LLVM"
+    Refresh-PathFromMachine
 }
 
 if (-not (Test-CommandAvailable "link.exe")) {
@@ -164,10 +165,20 @@ if (-not (Test-CommandAvailable "dub")) {
 
 if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-build-runtime")) {
     Install-ChocolateyPackage -Name "ldc"
+    Refresh-PathFromMachine
 }
 
 if (-not (Test-CommandAvailable "dub")) {
     Install-ChocolateyPackage -Name "dub"
+    Refresh-PathFromMachine
+}
+
+if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-lib") -or -not (Test-CommandAvailable "lld-link")) {
+    throw @"
+LLVM installation did not expose the required tools in the current environment.
+Missing one or more of: clang, llvm-lib, lld-link.
+Open a new shell if LLVM was just installed, or verify the LLVM winget installation.
+"@
 }
 
 if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-build-runtime")) {
