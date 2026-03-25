@@ -1,9 +1,9 @@
 {
   "bundle": {
     "targets": ["nsis"],
-    "resources": [
-      "../third_party/inochi2d-c/out/inochi2d-c.dll"
-    ],
+    "resources": {
+      "../third_party/inochi2d-c/out/inochi2d-c.dll": "inochi2d-c.dll"
+    },
     "windows": {
       "nsis": {
         "template": "windows/installer.nsi",

@@ -27,7 +27,7 @@ fn main() {
         if dll_path.exists() {
             std::env::set_var(
                 "TAURI_CONFIG",
-                r#"{"bundle":{"resources":["../third_party/inochi2d-c/out/inochi2d-c.dll"]}}"#,
+                r#"{"bundle":{"resources":{"../third_party/inochi2d-c/out/inochi2d-c.dll":"inochi2d-c.dll"}}}"#,
             );
             let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
             if let Some(profile_dir) = out_dir.ancestors().nth(3) {

@@ -6,6 +6,9 @@ authors = ["shiinamachi"]
 edition = "2021"
 default-run = "waifudex"
 
+[features]
+contract-export = []
+
 [lib]
 name = "waifudex_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -13,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "export_runtime_contracts"
 path = "src/bin/export_runtime_contracts.rs"
+required-features = ["contract-export"]
 
 [build-dependencies]
 tauri-build = { version = "=2.5.6", features = [] }
