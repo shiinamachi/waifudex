@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
+$LdcInstallRoot = Join-Path $env:LOCALAPPDATA "waifudex-tools\ldc2"
 
 function Test-CommandAvailable {
     param([string]$Name)
@@ -90,6 +90,11 @@ function Import-LlvmBin {
 function Import-LdcBin {
     $candidates = @()
 
+    $localLdcBin = Join-Path $LdcInstallRoot "bin"
+    if (Test-Path $localLdcBin) {
+        $candidates += $localLdcBin
+    }
+
     $toolsRoot = "C:\tools"
     if (Test-Path $toolsRoot) {
         $candidates += Get-ChildItem -LiteralPath $toolsRoot -Directory -Filter "ldc2-*-windows-multilib" -ErrorAction SilentlyContinue |
@@ -137,8 +142,7 @@ function Get-MissingWindowsBuildRequirements {
         "llvm-lib",
         "dub",
         "ldc2",
-        "ldc-build-runtime",
-        "link.exe"
+        "ldc-build-runtime"
     )) {
         if (-not (Test-CommandAvailable $command)) {
             $missing.Add($command)
@@ -170,7 +174,6 @@ function Get-MissingWindowsBuildRequirements {
     return $missing
 }
 
-Import-MsvcDevShell | Out-Null
 Import-LlvmBin
 Import-LdcBin
 
@@ -195,7 +198,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "mise run setup:windows-host-build failed with exit code $LASTEXITCODE"
 }
 
-Import-MsvcDevShell | Out-Null
 Import-LlvmBin
 Import-LdcBin
 

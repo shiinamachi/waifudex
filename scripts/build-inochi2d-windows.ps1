@@ -1,8 +1,6 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
-
 $root = Split-Path -Parent $PSScriptRoot
 $sourceDir = Join-Path $root "third_party\inochi2d-c"
 $outDir = Join-Path $sourceDir "out"
@@ -31,8 +29,6 @@ $ensureScript = Join-Path $PSScriptRoot "ensure-windows-host-build-env.ps1"
 if (Test-Path $ensureScript) {
     & $ensureScript
 }
-
-Import-MsvcDevShell | Out-Null
 
 function Require-Command {
     param([string]$Name)

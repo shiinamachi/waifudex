@@ -1,8 +1,6 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
-
 $root = Split-Path -Parent $PSScriptRoot
 $driveName = $null
 $rootPath = $root
@@ -38,7 +36,6 @@ try {
     $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $signingKeyPath
 
     & .\scripts\ensure-windows-host-build-env.ps1
-    Import-MsvcDevShell | Out-Null
     node .\scripts\sync-app-version.mjs
     node .\scripts\generate-dependency-inventory.mjs
     & .\scripts\build-inochi2d-windows.ps1
@@ -48,7 +45,8 @@ try {
     $tauriPath = node -e "const path=require('node:path'); process.stdout.write(path.join(path.dirname(require.resolve('@tauri-apps/cli/package.json')), 'tauri.js'));"
 
     node $vitePath build
-    node $tauriPath build --config src-tauri/tauri.windows.updater.conf.json
+    $env:XWIN_ARCH = "x86_64"
+    node $tauriPath build --config src-tauri/tauri.windows.updater.conf.json --runner cargo-xwin -- --target x86_64-pc-windows-msvc
 }
 finally {
     if ($driveName) {

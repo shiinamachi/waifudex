@@ -1,7 +1,10 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-. (Join-Path $PSScriptRoot "import-msvc-dev-shell.ps1")
+$LdcVersion = "1.40.1"
+$LdcArchiveName = "ldc2-$LdcVersion-windows-multilib"
+$LdcDownloadUrl = "https://github.com/ldc-developers/ldc/releases/download/v$LdcVersion/$LdcArchiveName.zip"
+$LdcInstallRoot = Join-Path $env:LOCALAPPDATA "waifudex-tools\ldc2"
 
 function Test-CommandAvailable {
     param([string]$Name)
@@ -107,6 +110,11 @@ function Import-LlvmBin {
 function Import-LdcBin {
     $candidates = @()
 
+    $localLdcBin = Join-Path $LdcInstallRoot "bin"
+    if (Test-Path $localLdcBin) {
+        $candidates += $localLdcBin
+    }
+
     $toolsRoot = "C:\tools"
     if (Test-Path $toolsRoot) {
         $candidates += Get-ChildItem -LiteralPath $toolsRoot -Directory -Filter "ldc2-*-windows-multilib" -ErrorAction SilentlyContinue |
@@ -153,7 +161,7 @@ function Install-WingetPackage {
         throw "winget is required to install Windows build prerequisites automatically."
     }
 
-    $command = @(
+    $baseCommand = @(
         "install",
         "-e",
         "--id", $Id,
@@ -161,6 +169,7 @@ function Install-WingetPackage {
         "--accept-package-agreements"
     ) + $Arguments
 
+    $command = $baseCommand + @("--scope", "user")
     & winget @command
     if ($LASTEXITCODE -ne 0) {
         if (Test-WingetPackageInstalled $Id) {
@@ -168,48 +177,67 @@ function Install-WingetPackage {
             return
         }
 
-        throw "winget install failed for package $Id with exit code $LASTEXITCODE"
+        Write-Host "User-scope install failed for $Id; retrying without --scope user..."
+        & winget @baseCommand
+        if ($LASTEXITCODE -ne 0) {
+            if (Test-WingetPackageInstalled $Id) {
+                Refresh-PathFromMachine
+                return
+            }
+
+            throw "winget install failed for package $Id with exit code $LASTEXITCODE"
+        }
     }
 
     Refresh-PathFromMachine
 }
 
-function Import-ChocolateyBin {
-    $chocoBin = Join-Path $env:ProgramData "chocolatey\bin"
-    if ((Test-Path $chocoBin) -and -not ($env:PATH -split ";" | Where-Object { $_ -eq $chocoBin })) {
-        $env:PATH = "$chocoBin;$env:PATH"
-    }
-}
-
-function Ensure-Chocolatey {
-    if (Test-CommandAvailable "choco") {
-        Import-ChocolateyBin
-        Refresh-PathFromMachine
+function Install-LdcDirect {
+    if ((Test-CommandAvailable "ldc2") -and (Test-CommandAvailable "dub") -and (Test-CommandAvailable "ldc-build-runtime")) {
         return
     }
 
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))
-
-    Import-ChocolateyBin
-    Refresh-PathFromMachine
-
-    if (-not (Test-CommandAvailable "choco")) {
-        throw "Chocolatey installation completed, but choco is still not available in the current environment."
-    }
-}
-
-function Install-ChocolateyPackage {
-    param([string]$Name)
-
-    Ensure-Chocolatey
-    & choco install $Name -y --no-progress
-    if ($LASTEXITCODE -ne 0) {
-        throw "choco install $Name failed with exit code $LASTEXITCODE"
+    $localLdcBin = Join-Path $LdcInstallRoot "bin"
+    if (Test-Path (Join-Path $localLdcBin "ldc2.exe")) {
+        Import-LdcBin
+        return
     }
 
-    Import-ChocolateyBin
-    Refresh-PathFromMachine
+    Write-Host "Downloading LDC $LdcVersion from GitHub..."
+    $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "$LdcArchiveName.zip"
+    $tempExtract = Join-Path ([System.IO.Path]::GetTempPath()) "ldc-extract-$([System.IO.Path]::GetRandomFileName())"
+
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        Invoke-WebRequest -Uri $LdcDownloadUrl -OutFile $tempZip -UseBasicParsing
+        if (-not (Test-Path $tempZip)) {
+            throw "Failed to download LDC archive from $LdcDownloadUrl"
+        }
+
+        Write-Host "Extracting LDC to $LdcInstallRoot..."
+        New-Item -ItemType Directory -Force -Path $tempExtract | Out-Null
+        Expand-Archive -LiteralPath $tempZip -DestinationPath $tempExtract -Force
+
+        $extractedDir = Get-ChildItem -LiteralPath $tempExtract -Directory | Select-Object -First 1
+        if (-not $extractedDir) {
+            throw "LDC archive did not contain a top-level directory"
+        }
+
+        if (Test-Path $LdcInstallRoot) {
+            Remove-Item $LdcInstallRoot -Recurse -Force
+        }
+        $parentDir = Split-Path -Parent $LdcInstallRoot
+        if (-not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Force -Path $parentDir | Out-Null
+        }
+        Move-Item -LiteralPath $extractedDir.FullName -Destination $LdcInstallRoot -Force
+    }
+    finally {
+        Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+        Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Import-LdcBin
 }
 
 & mise install
@@ -253,18 +281,6 @@ if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-l
     Import-LlvmBin
 }
 
-if (-not (Test-CommandAvailable "link.exe")) {
-    Install-WingetPackage -Id "Microsoft.VisualStudio.2022.BuildTools" -Arguments @(
-        "--override",
-        "--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-    )
-}
-
-$importedMsvc = Import-MsvcDevShell
-if (-not $importedMsvc) {
-    throw "Visual Studio Build Tools may not be installed or discoverable. Could not import the MSVC developer shell."
-}
-
 if (-not (Test-CommandAvailable "cargo-xwin")) {
     & cargo install --locked cargo-xwin
     if ($LASTEXITCODE -ne 0) {
@@ -272,20 +288,7 @@ if (-not (Test-CommandAvailable "cargo-xwin")) {
     }
 }
 
-if (-not (Test-CommandAvailable "dub")) {
-    Install-WingetPackage -Id "Dlang.DMD"
-}
-
-if (-not (Test-CommandAvailable "ldc2") -or -not (Test-CommandAvailable "ldc-build-runtime")) {
-    Install-ChocolateyPackage -Name "ldc"
-    Refresh-PathFromMachine
-    Import-LdcBin
-}
-
-if (-not (Test-CommandAvailable "dub")) {
-    Install-ChocolateyPackage -Name "dub"
-    Refresh-PathFromMachine
-}
+Install-LdcDirect
 
 if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-lib") -or -not (Test-CommandAvailable "lld-link")) {
     throw @"
@@ -304,10 +307,6 @@ Install an LDC distribution that provides both ldc2 and ldc-build-runtime, then 
 
 if (-not (Resolve-PythonCommand)) {
     throw "Failed to provision a usable Python runtime. Run mise install again or verify the Python launcher on this Windows host."
-}
-
-if (-not (Test-CommandAvailable "link.exe")) {
-    throw "Visual Studio Build Tools were installed, but link.exe is still not available in the current environment. Open a new shell or verify the VC++ workload installation."
 }
 
 & cargo xwin env --target x86_64-pc-windows-msvc | Out-Null
