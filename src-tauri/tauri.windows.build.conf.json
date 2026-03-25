@@ -5,6 +5,12 @@
     "bundle": {
         "resources": [
             "../third_party/inochi2d-c/out/inochi2d-c.dll"
-        ]
+        ],
+        "windows": {
+            "nsis": {
+                "template": "windows/installer.nsi",
+                "installMode": "currentUser"
+            }
+        }
     }
 }

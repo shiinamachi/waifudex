@@ -275,6 +275,22 @@ mod tests {
     }
 
     #[test]
+    fn windows_build_overlay_defines_nsis_template_directly() {
+        assert_windows_nsis_config(
+            &tauri_windows_build_config(),
+            "tauri.windows.build.conf.json",
+        );
+    }
+
+    #[test]
+    fn windows_updater_overlay_defines_nsis_template_directly() {
+        assert_windows_nsis_config(
+            &tauri_windows_updater_config(),
+            "tauri.windows.updater.conf.json",
+        );
+    }
+
+    #[test]
     fn linux_config_bundles_linux_inochi2d_runtime() {
         assert_linux_bundle_resources(
             &merged_config(tauri_linux_config()),
