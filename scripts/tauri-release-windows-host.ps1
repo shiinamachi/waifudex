@@ -28,6 +28,7 @@ if ($root.StartsWith("\\")) {
 
 try {
     Set-Location -LiteralPath $rootPath
+    $generatedTauriConfigPath = Join-Path $rootPath "src-tauri\tauri.windows.build.generated.json"
 
     $signingKeyPath = Join-Path $rootPath "production.key"
     if (-not (Test-Path -LiteralPath $signingKeyPath -PathType Leaf)) {
@@ -46,6 +47,7 @@ try {
     node .\scripts\generate-dependency-inventory.mjs
     & .\scripts\build-inochi2d-windows.ps1
     node .\scripts\assert-windows-inochi2d-artifacts.mjs
+    node .\scripts\normalize-tauri-windows-build-config.mjs --config .\src-tauri\tauri.windows.build.conf.json --output $generatedTauriConfigPath
 
     $vitePath = node -e "const path=require('node:path'); process.stdout.write(path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js'));"
     $tauriPath = node -e "const path=require('node:path'); process.stdout.write(path.join(path.dirname(require.resolve('@tauri-apps/cli/package.json')), 'tauri.js'));"
@@ -53,10 +55,13 @@ try {
     node $vitePath build
     $env:XWIN_ARCH = "x86_64"
     Invoke-WithCargoXwinToolchain {
-        node $tauriPath build --ci --config src-tauri/tauri.windows.build.conf.json --runner cargo-xwin -- --target x86_64-pc-windows-msvc
+        node $tauriPath build --ci --config $generatedTauriConfigPath --runner cargo-xwin -- --target x86_64-pc-windows-msvc
     }
 }
 finally {
+    if ($generatedTauriConfigPath) {
+        Remove-Item -LiteralPath $generatedTauriConfigPath -Force -ErrorAction SilentlyContinue
+    }
     if ($driveName) {
         Remove-PSDrive -Name $driveName -Force -ErrorAction SilentlyContinue
     }
