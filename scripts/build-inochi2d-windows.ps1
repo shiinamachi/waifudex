@@ -175,7 +175,7 @@ function Get-CombinedSha256 {
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($joined)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        return [Convert]::ToHexString($sha256.ComputeHash($bytes))
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace("-", "")
     }
     finally {
         $sha256.Dispose()
@@ -188,12 +188,29 @@ function Get-FileSha256 {
     $stream = [System.IO.File]::OpenRead($LiteralPath)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        return [Convert]::ToHexString($sha256.ComputeHash($stream))
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace("-", "")
     }
     finally {
         $sha256.Dispose()
         $stream.Dispose()
     }
+}
+
+function Get-PortableRelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$BasePath,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath)
+    if (-not $baseFullPath.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $baseFullPath = $baseFullPath + [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    $baseUri = [System.Uri]::new($baseFullPath)
+    $pathUri = [System.Uri]::new([System.IO.Path]::GetFullPath($Path))
+    $relativeUri = $baseUri.MakeRelativeUri($pathUri)
+    [System.Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
 }
 
 function Get-Inochi2dBuildStamp {
@@ -207,7 +224,7 @@ function Get-Inochi2dBuildStamp {
         Where-Object { $_.FullName -notmatch '[\\/]\.git([\\/]|$)' } |
         Sort-Object FullName |
         ForEach-Object {
-            $relativePath = [System.IO.Path]::GetRelativePath($sourceDir, $_.FullName)
+            $relativePath = Get-PortableRelativePath -BasePath $sourceDir -Path $_.FullName
             $entries.Add("$relativePath=$(Get-FileSha256 -LiteralPath $_.FullName)")
         }
 
