@@ -36,6 +36,9 @@ try {
 
     $env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText($signingKeyPath)
     $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $signingKeyPath
+    if (-not (Test-Path Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+        $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+    }
 
     & .\scripts\ensure-windows-host-build-env.ps1
     node .\scripts\sync-app-version.mjs
