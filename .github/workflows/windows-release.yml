@@ -31,6 +31,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.ref_name }}
+          submodules: recursive
 
       - name: Install pinned runtimes from mise
         uses: jdx/mise-action@v4
