@@ -65,6 +65,9 @@ ${StrLoc}
 Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
+Var PassiveModeOption
+Var UpdateModeOption
+Var NoShortcutModeOption
 Var WixMode
 Var OldMainBinaryName
 
@@ -465,18 +468,22 @@ Function .onInit
   ; usual NSIS command-line flags to opt into other behaviors.
   StrCpy $PassiveMode 1
   StrCpy $NoShortcutMode 1
+  StrCpy $UpdateMode ""
 
-  ${GetOptions} $CMDLINE "/P" $PassiveMode
+  StrCpy $PassiveModeOption ""
+  ${GetOptions} $CMDLINE "/P" $PassiveModeOption
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
   ${EndIf}
 
-  ${GetOptions} $CMDLINE "/NS" $NoShortcutMode
+  StrCpy $NoShortcutModeOption ""
+  ${GetOptions} $CMDLINE "/NS" $NoShortcutModeOption
   ${IfNot} ${Errors}
     StrCpy $NoShortcutMode 1
   ${EndIf}
 
-  ${GetOptions} $CMDLINE "/UPDATE" $UpdateMode
+  StrCpy $UpdateModeOption ""
+  ${GetOptions} $CMDLINE "/UPDATE" $UpdateModeOption
   ${IfNot} ${Errors}
     StrCpy $UpdateMode 1
   ${EndIf}
@@ -752,12 +759,17 @@ Function un.onInit
 
   !insertmacro MUI_UNGETLANGUAGE
 
-  ${GetOptions} $CMDLINE "/P" $PassiveMode
+  StrCpy $PassiveMode ""
+  StrCpy $UpdateMode ""
+
+  StrCpy $PassiveModeOption ""
+  ${GetOptions} $CMDLINE "/P" $PassiveModeOption
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
   ${EndIf}
 
-  ${GetOptions} $CMDLINE "/UPDATE" $UpdateMode
+  StrCpy $UpdateModeOption ""
+  ${GetOptions} $CMDLINE "/UPDATE" $UpdateModeOption
   ${IfNot} ${Errors}
     StrCpy $UpdateMode 1
   ${EndIf}

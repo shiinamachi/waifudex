@@ -97,6 +97,10 @@ mod tests {
         include_str!("../../scripts/tauri-release-windows-host.ps1")
     }
 
+    fn windows_installer_script() -> &'static str {
+        include_str!("../windows/installer.nsi")
+    }
+
     fn apply_merge_patch(target: &mut Value, patch: &Value) {
         match (target, patch) {
             (Value::Object(target_obj), Value::Object(patch_obj)) => {
@@ -292,6 +296,24 @@ mod tests {
         assert!(
             !windows_release_script().contains("tauri.windows.updater.conf.json"),
             "tauri-release-windows-host.ps1 should not depend on a separate updater overlay"
+        );
+    }
+
+    #[test]
+    fn windows_installer_script_preserves_default_mode_flags() {
+        let script_lines: Vec<_> = windows_installer_script().lines().map(str::trim).collect();
+
+        assert!(
+            !script_lines.contains(&r#"${GetOptions} $CMDLINE "/P" $PassiveMode"#),
+            "installer.nsi should not let GetOptions clear the default passive mode flag"
+        );
+        assert!(
+            !script_lines.contains(&r#"${GetOptions} $CMDLINE "/NS" $NoShortcutMode"#),
+            "installer.nsi should not let GetOptions clear the default no-shortcut mode flag"
+        );
+        assert!(
+            !script_lines.contains(&r#"${GetOptions} $CMDLINE "/UPDATE" $UpdateMode"#),
+            "installer.nsi should not let GetOptions clear the update mode flag"
         );
     }
 
