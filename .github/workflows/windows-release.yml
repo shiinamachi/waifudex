@@ -81,7 +81,11 @@ jobs:
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ github.event.inputs.version }}
-        run: pnpm run release:version:bump -- --version $env:RELEASE_VERSION
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          node -e "const fs=require('node:fs'); const pkgPath='package.json'; const pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8')); pkg.version=process.env.RELEASE_VERSION; fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');"
+          node ./scripts/sync-app-version.mjs
 
       - name: Commit and push version bump
         id: commit
