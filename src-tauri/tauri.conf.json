@@ -1,34 +1,37 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "waifudex",
-  "version": "0.1.0",
-  "identifier": "moe.shiinamachi.waifudex",
-  "build": {
-    "beforeDevCommand": "node ./scripts/generate-dependency-inventory.mjs && vite --host 0.0.0.0 --port 1420",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "node ./scripts/generate-dependency-inventory.mjs && vite build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "security": {
-      "csp": null
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "waifudex",
+    "version": "0.1.2",
+    "identifier": "moe.shiinamachi.waifudex",
+    "build": {
+        "beforeDevCommand": "node ./scripts/generate-dependency-inventory.mjs && vite --host 0.0.0.0 --port 1420",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "node ./scripts/generate-dependency-inventory.mjs && vite build",
+        "frontendDist": "../dist"
+    },
+    "app": {
+        "security": {
+            "csp": null
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "createUpdaterArtifacts": true,
+        "icon": [
+            "icons/icon.png",
+            "icons/icon.ico"
+        ]
+    },
+    "plugins": {
+        "updater": {
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFNTMzQkE4NkJFMDMwOTYKUldTV01PQnJxRHRUM3VZSUp1ZnllcTBPOCtrc09qZTduR0VLaHdJbHE3NzlGTjFBSlVwS0VCbmYK",
+            "endpoints": [
+                "https://github.com/shiinamachi/waifudex/releases/latest/download/latest.json"
+            ],
+            "windows": {
+                "installMode": "passive"
+            }
+        }
     }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "createUpdaterArtifacts": true,
-    "icon": ["icons/icon.png", "icons/icon.ico"]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFNTMzQkE4NkJFMDMwOTYKUldTV01PQnJxRHRUM3VZSUp1ZnllcTBPOCtrc09qZTduR0VLaHdJbHE3NzlGTjFBSlVwS0VCbmYK",
-      "endpoints": [
-        "https://github.com/shiinamachi/waifudex/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
-  }
 }
