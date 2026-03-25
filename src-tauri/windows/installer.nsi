@@ -25,6 +25,8 @@ ManifestDPIAwareness PerMonitorV2
 ${StrCase}
 ${StrLoc}
 
+!define MUI_UI "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
+
 {{#if installer_hooks}}
 !include "{{installer_hooks}}"
 {{/if}}
@@ -72,7 +74,8 @@ Var WixMode
 Var OldMainBinaryName
 
 Name "${PRODUCTNAME}"
-BrandingText "${COPYRIGHT}"
+Caption "${PRODUCTNAME}"
+BrandingText " "
 OutFile "${OUTFILE}"
 
 ; We don't actually use this value as default install path,
@@ -144,25 +147,14 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_LANGDLL_REGISTRY_KEY "${MANUPRODUCTKEY}"
 !define MUI_LANGDLL_REGISTRY_VALUENAME "Installer Language"
 
-; Installer pages, must be ordered as they appear
-; 1. Welcome Page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_WELCOME
+ShowInstDetails nevershow
+ShowUninstDetails nevershow
+InstProgressFlags smooth
+AutoCloseWindow true
 
-; 2. License Page (if defined)
-!if "${LICENSE}" != ""
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-  !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
-!endif
-
-; 3. Install mode (if it is set to `both`)
-!if "${INSTALLMODE}" == "both"
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-  !insertmacro MULTIUSER_PAGE_INSTALLMODE
-!endif
-
-; 4. Custom page to ask user if he wants to reinstall/uninstall
-;    only if a previous installation was detected
+; Installer pages, must be ordered as they appear.
+; The default path intentionally mirrors Squirrel's compact flow and lands
+; directly on progress unless hidden reinstall work needs to happen first.
 Var ReinstallPageCheck
 Page custom PageReinstall PageLeaveReinstall
 Function PageReinstall
@@ -238,46 +230,11 @@ Function PageReinstall
     Abort
   ${EndIf}
 
-  ; Skip showing the page if passive
-  ;
-  ; Note that we don't call this earlier at the begining
-  ; of this function because we need to populate some variables
-  ; related to current installed version if detected and whether
-  ; we are downgrading or not.
-  ${If} $PassiveMode = 1
-    Call PageLeaveReinstall
-  ${Else}
-    nsDialogs::Create 1018
-    Pop $R4
-    ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
-
-    ${NSD_CreateLabel} 0 0 100% 24u $R1
-    Pop $R1
-
-    ${NSD_CreateRadioButton} 30u 50u -30u 8u $R2
-    Pop $R2
-    ${NSD_OnClick} $R2 PageReinstallUpdateSelection
-
-    ${NSD_CreateRadioButton} 30u 70u -30u 8u $R3
-    Pop $R3
-    ; Disable this radio button if downgrading and downgrades are disabled
-    !if "${ALLOWDOWNGRADES}" == "false"
-      ${IfThen} $R0 = -1 ${|} EnableWindow $R3 0 ${|}
-    !endif
-    ${NSD_OnClick} $R3 PageReinstallUpdateSelection
-
-    ; Check the first radio button if this the first time
-    ; we enter this page or if the second button wasn't
-    ; selected the last time we were on this page
-    ${If} $ReinstallPageCheck <> 2
-      SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
-    ${Else}
-      SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0
-    ${EndIf}
-
-    ${NSD_SetFocus} $R2
-    nsDialogs::Show
-  ${EndIf}
+  ; Squirrel-style flow does not expose maintenance choices on the common path.
+  ; Resolve the reinstall behavior automatically and continue directly to the
+  ; progress window.
+  Call PageLeaveReinstall
+  Abort
 FunctionEnd
 Function PageReinstallUpdateSelection
   ${NSD_GetState} $R2 $R1
@@ -288,16 +245,13 @@ Function PageReinstallUpdateSelection
   ${EndIf}
 FunctionEnd
 Function PageLeaveReinstall
-  ; The one-click installer never renders the reinstall choice UI, so pick the
-  ; non-destructive default automatically for the passive path.
-  ${If} $PassiveMode = 1
-    ${If} $R0 = 0
-      StrCpy $R1 1
-    ${Else}
-      StrCpy $R1 0
-    ${EndIf}
+  ; Resolve the hidden maintenance choice automatically for the Squirrel-like
+  ; path. Reinstall the same version in-place, but treat upgrades/downgrades as
+  ; a normal install unless a special-case uninstall path is required.
+  ${If} $R0 = 0
+    StrCpy $R1 1
   ${Else}
-    ${NSD_GetState} $R2 $R1
+    StrCpy $R1 0
   ${EndIf}
 
   ; If migrating from Wix, always uninstall
@@ -374,86 +328,71 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
-; 5. Choose install directory page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_DIRECTORY
-
-; 6. Start menu shortcut page
 Var AppStartMenuFolder
-!if "${STARTMENUFOLDER}" != ""
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-  !define MUI_STARTMENUPAGE_DEFAULTFOLDER "${STARTMENUFOLDER}"
-!else
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE Skip
-!endif
-!insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
-
-; 7. Installation page
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallProgressShow
 !insertmacro MUI_PAGE_INSTFILES
-
-; 8. Finish page
-;
-; Don't auto jump to finish page after installation page,
-; because the installation page has useful info that can be used debug any issues with the installer.
-!define MUI_FINISHPAGE_NOAUTOCLOSE
-; Use show readme button in the finish page as a button create a desktop shortcut
-!define MUI_FINISHPAGE_SHOWREADME
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktop)"
-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateOrUpdateDesktopShortcut
-; Show run app after installation.
-!define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
   nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
 FunctionEnd
 
+Function InstallProgressShow
+  GetDlgItem $0 $HWNDPARENT 1
+  ShowWindow $0 0
+  GetDlgItem $0 $HWNDPARENT 2
+  ShowWindow $0 0
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 0
+FunctionEnd
+
 ; Uninstaller Pages
-; 1. Confirm uninstall page
+; 1. Compact uninstall confirmation page
 Var DeleteAppDataCheckbox
 Var DeleteAppDataCheckboxState
-!define /ifndef WS_EX_LAYOUTRTL         0x00400000
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow
-Function un.ConfirmShow ; Add add a `Delete app data` check box
-  ; $1 inner dialog HWND
-  ; $2 window DPI
-  ; $3 style
-  ; $4 x
-  ; $5 y
-  ; $6 width
-  ; $7 height
-  FindWindow $1 "#32770" "" $HWNDPARENT ; Find inner dialog
-  System::Call "user32::GetDpiForWindow(p r1) i .r2"
-  ${If} $(^RTL) = 1
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE} | ${WS_EX_LAYOUTRTL}"
-    IntOp $4 50 * $2
-  ${Else}
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
-    IntOp $4 0 * $2
+UninstPage custom un.ConfirmShow un.ConfirmLeave
+Function un.ConfirmShow
+  ${If} $PassiveMode = 1
+  ${OrIf} $UpdateMode = 1
+    Abort
   ${EndIf}
-  IntOp $5 100 * $2
-  IntOp $6 400 * $2
-  IntOp $7 25 * $2
-  IntOp $4 $4 / 96
-  IntOp $5 $5 / 96
-  IntOp $6 $6 / 96
-  IntOp $7 $7 / 96
-  System::Call 'user32::CreateWindowEx(i r3, w "${__NSD_CheckBox_CLASS}", w "$(deleteAppData)", i ${__NSD_CheckBox_STYLE}, i r4, i r5, i r6, i r7, p r1, i0, i0, i0) i .s'
+
+  nsDialogs::Create 1018
+  Pop $0
+  ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
+
+  ${NSD_CreateLabel} 0 0 100% 18u "${PRODUCTNAME}"
+  Pop $1
+
+  ${NSD_CreateLabel} 0 18u 100% 12u "$(uninstallApp)"
+  Pop $2
+
+  ${NSD_CreateCheckbox} 0 44u 100% 10u "$(deleteAppData)"
   Pop $DeleteAppDataCheckbox
-  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
-  SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
+
+  GetDlgItem $3 $HWNDPARENT 3
+  ShowWindow $3 0
+
+  GetDlgItem $3 $HWNDPARENT 1
+  SendMessage $3 ${WM_SETTEXT} 0 "STR:$(^UninstallBtn)"
+
+  nsDialogs::Show
 FunctionEnd
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
 Function un.ConfirmLeave
   SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
 FunctionEnd
-!define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
-!insertmacro MUI_UNPAGE_CONFIRM
 
 ; 2. Uninstalling Page
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ProgressShow
 !insertmacro MUI_UNPAGE_INSTFILES
+
+Function un.ProgressShow
+  GetDlgItem $0 $HWNDPARENT 1
+  ShowWindow $0 0
+  GetDlgItem $0 $HWNDPARENT 2
+  ShowWindow $0 0
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 0
+FunctionEnd
 
 ;Languages
 {{#each languages}}
@@ -494,6 +433,8 @@ Function .onInit
   !endif
 
   !insertmacro SetContext
+
+  StrCpy $AppStartMenuFolder "${STARTMENUFOLDER}"
 
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
     ; Set default install location

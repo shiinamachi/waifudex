@@ -68,3 +68,75 @@ pub fn run() {
             }
         });
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::PathBuf};
+
+    use serde_json::{json, Value};
+
+    fn src_tauri_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    }
+
+    fn read_json_config(path: &str) -> Value {
+        let content = fs::read_to_string(src_tauri_root().join(path))
+            .unwrap_or_else(|error| panic!("failed to read {path}: {error}"));
+        serde_json::from_str(&content)
+            .unwrap_or_else(|error| panic!("failed to parse {path}: {error}"))
+    }
+
+    fn merge_json(target: &mut Value, source: Value) {
+        match (target, source) {
+            (Value::Object(target_map), Value::Object(source_map)) => {
+                for (key, value) in source_map {
+                    merge_json(target_map.entry(key).or_insert(Value::Null), value);
+                }
+            }
+            (target_slot, source_value) => {
+                *target_slot = source_value;
+            }
+        }
+    }
+
+    fn merged_windows_bundle_config() -> Value {
+        let mut base = read_json_config("tauri.conf.json");
+        let windows = read_json_config("tauri.windows.conf.json");
+        merge_json(&mut base, windows);
+        base["bundle"].clone()
+    }
+
+    fn read_windows_installer_script() -> String {
+        fs::read_to_string(src_tauri_root().join("windows/installer.nsi"))
+            .unwrap_or_else(|error| panic!("failed to read windows/installer.nsi: {error}"))
+    }
+
+    #[test]
+    fn windows_nsis_bundle_contract_uses_custom_template() {
+        let bundle = merged_windows_bundle_config();
+        let nsis = &bundle["windows"]["nsis"];
+
+        assert_eq!(bundle["targets"], json!(["nsis"]));
+        assert_eq!(nsis["template"].as_str(), Some("windows/installer.nsi"));
+        assert_eq!(nsis["installMode"].as_str(), Some("currentUser"));
+        assert_eq!(nsis["installerIcon"].as_str(), Some("icons/icon.ico"));
+    }
+
+    #[test]
+    fn windows_nsis_installer_script_contract_matches_squirrel_style_ui() {
+        let installer_script = read_windows_installer_script();
+
+        for expected in [
+            r#"!define MUI_UI "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe""#,
+            r#"Caption "${PRODUCTNAME}""#,
+            r#"BrandingText " ""#,
+            r#"ShowInstDetails nevershow"#,
+            r#"ShowUninstDetails nevershow"#,
+        ] {
+            assert!(
+                installer_script.contains(expected),
+                "missing installer contract string: {expected}",
+            );
+        }
+    }
+}
