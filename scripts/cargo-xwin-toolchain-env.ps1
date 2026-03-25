@@ -15,47 +15,49 @@ function Resolve-ApplicationCommandPath {
     $command.Source
 }
 
-function Get-WaifudexToolCacheRoot {
+function Get-CargoXwinCacheDir {
     if ($env:LOCALAPPDATA) {
-        return Join-Path $env:LOCALAPPDATA "waifudex-tools"
+        return Join-Path $env:LOCALAPPDATA "cargo-xwin"
     }
 
     $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
-    Join-Path $homeDir ".cache\waifudex-tools"
+    Join-Path $homeDir ".cache\cargo-xwin"
 }
 
-function Write-CommandWrapperIfNeeded {
+function Copy-ToolIfNeeded {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Destination
     )
 
-    $wrapperContent = @(
-        "@echo off",
-        "`"$Source`" %*",
-        "exit /b %ERRORLEVEL%"
-    ) -join "`r`n"
+    $shouldCopy = -not (Test-Path -LiteralPath $Destination -PathType Leaf)
 
-    $shouldWrite = -not (Test-Path -LiteralPath $Destination -PathType Leaf)
-
-    if (-not $shouldWrite) {
-        $existingContent = Get-Content -LiteralPath $Destination -Raw
-        $shouldWrite = $existingContent -ne $wrapperContent
+    if (-not $shouldCopy) {
+        $sourceInfo = Get-Item -LiteralPath $Source
+        $destinationInfo = Get-Item -LiteralPath $Destination
+        $shouldCopy = $sourceInfo.Length -ne $destinationInfo.Length -or
+            $sourceInfo.LastWriteTimeUtc -gt $destinationInfo.LastWriteTimeUtc
     }
 
-    if ($shouldWrite) {
-        Set-Content -LiteralPath $Destination -Value $wrapperContent -Encoding ascii
+    if ($shouldCopy) {
+        Copy-Item -LiteralPath $Source -Destination $Destination -Force
     }
 }
 
 function Ensure-CargoXwinToolchainBin {
-    $toolchainDir = Join-Path (Get-WaifudexToolCacheRoot) "cargo-xwin-toolchain"
+    $toolchainDir = Get-CargoXwinCacheDir
     New-Item -ItemType Directory -Force -Path $toolchainDir | Out-Null
 
-    foreach ($commandName in @("clang-cl", "lld-link", "llvm-lib", "llvm-ar")) {
-        $sourcePath = Resolve-ApplicationCommandPath -Name $commandName
-        $destinationPath = Join-Path $toolchainDir "$commandName.cmd"
-        Write-CommandWrapperIfNeeded -Source $sourcePath -Destination $destinationPath
+    foreach ($tool in @(
+        @{ Source = "clang-cl"; Destination = "clang-cl.exe" },
+        @{ Source = "lld-link"; Destination = "lld-link.exe" },
+        @{ Source = "llvm-lib"; Destination = "llvm-lib.exe" },
+        @{ Source = "llvm-ar"; Destination = "llvm-ar.exe" },
+        @{ Source = "llvm-ar"; Destination = "llvm-dlltool.exe" }
+    )) {
+        $sourcePath = Resolve-ApplicationCommandPath -Name $tool.Source
+        $destinationPath = Join-Path $toolchainDir $tool.Destination
+        Copy-ToolIfNeeded -Source $sourcePath -Destination $destinationPath
     }
 
     return $toolchainDir
