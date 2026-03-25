@@ -1,6 +1,6 @@
 [package]
 name = "waifudex"
-version = "0.1.7"
+version = "0.1.8"
 description = "A desktop mascot shell for visualizing Codex agent state."
 authors = ["shiinamachi"]
 edition = "2021"
