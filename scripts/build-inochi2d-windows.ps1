@@ -65,6 +65,29 @@ function Test-CommandRuns {
     }
 }
 
+function Invoke-NativeCommandQuietly {
+    param(
+        [string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    $previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+    $previousErrorAction = $ErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    $ErrorActionPreference = "Continue"
+
+    try {
+        & $Command @Arguments *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "$Command failed with exit code $LASTEXITCODE"
+        }
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+        $ErrorActionPreference = $previousErrorAction
+    }
+}
+
 function Resolve-PythonCommand {
     $candidates = [System.Collections.Generic.List[object]]::new()
 
@@ -229,10 +252,7 @@ function Ensure-HostGitver {
     $hostGitverBin = Find-HostGitverBin -SearchRoot $hostGitverDir
 
     if (-not $hostGitverDir -and -not $hostGitverBin) {
-        & $Dub fetch $gitverPackage 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "failed to fetch gitver package"
-        }
+        Invoke-NativeCommandQuietly -Command $Dub -Arguments @("fetch", $gitverPackage)
 
         $hostGitverDir = Find-HostGitverDir
         $hostGitverBin = Find-HostGitverBin -SearchRoot $hostGitverDir
@@ -246,10 +266,7 @@ function Ensure-HostGitver {
     if ($hostGitverDir) {
         Push-Location $hostGitverDir
         try {
-            & $Dub build "--compiler=$Ldc2" --force 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "failed to build host gitver"
-            }
+            Invoke-NativeCommandQuietly -Command $Dub -Arguments @("build", "--compiler=$Ldc2", "--force")
         }
         finally {
             Pop-Location
