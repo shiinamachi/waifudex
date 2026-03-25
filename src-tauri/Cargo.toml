@@ -2,7 +2,7 @@
 name = "waifudex"
 version = "0.1.0"
 description = "A desktop mascot shell for visualizing Codex agent state."
-authors = ["kentakang"]
+authors = ["shiinamachi"]
 edition = "2021"
 default-run = "waifudex"
 
