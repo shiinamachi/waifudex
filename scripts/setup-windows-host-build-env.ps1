@@ -263,10 +263,6 @@ if (Test-CommandAvailable "rustup") {
     }
 }
 
-if (-not (Resolve-PythonCommand)) {
-    Install-WingetPackage -Id "Python.Python.3.12"
-}
-
 if (-not (Test-CommandAvailable "cmake")) {
     Install-WingetPackage -Id "Kitware.CMake"
 }
