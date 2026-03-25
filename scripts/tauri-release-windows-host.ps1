@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
+. (Join-Path $PSScriptRoot "cargo-xwin-toolchain-env.ps1")
+
 $root = Split-Path -Parent $PSScriptRoot
 $driveName = $null
 $rootPath = $root
@@ -46,7 +48,9 @@ try {
 
     node $vitePath build
     $env:XWIN_ARCH = "x86_64"
-    node $tauriPath build --config src-tauri/tauri.windows.build.conf.json --runner cargo-xwin -- --target x86_64-pc-windows-msvc
+    Invoke-WithCargoXwinToolchain {
+        node $tauriPath build --config src-tauri/tauri.windows.build.conf.json --runner cargo-xwin -- --target x86_64-pc-windows-msvc
+    }
 }
 finally {
     if ($driveName) {
