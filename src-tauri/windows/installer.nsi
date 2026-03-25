@@ -25,7 +25,9 @@ ManifestDPIAwareness PerMonitorV2
 ${StrCase}
 ${StrLoc}
 
-!define MUI_UI "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
+!ifexist "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
+  !define MUI_UI "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
+!endif
 
 {{#if installer_hooks}}
 !include "{{installer_hooks}}"

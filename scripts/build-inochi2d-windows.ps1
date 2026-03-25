@@ -20,13 +20,16 @@ $waifudexCacheDir = if ($env:XDG_CACHE_HOME) {
 } else {
     Join-Path $homeDir ".cache\waifudex\inochi2d-windows"
 }
+$artifactCacheDir = Join-Path $waifudexCacheDir "artifacts"
 $runtimeBuildDir = Join-Path $waifudexCacheDir "ldc-runtime"
 $runtimeLibDir = Join-Path $waifudexCacheDir "runtime-lib"
 $workDir = Join-Path $waifudexCacheDir "work"
 $wrapperDir = Join-Path $waifudexCacheDir "dub-wrapper"
+$buildStampPath = Join-Path $waifudexCacheDir "inochi2d-build.stamp"
+$buildStampVersion = "windows-inochi2d-cache-v1"
 
 $ensureScript = Join-Path $PSScriptRoot "ensure-windows-host-build-env.ps1"
-if (Test-Path $ensureScript) {
+if (-not $env:WAIFUDEX_WINDOWS_HOST_BUILD_ENV_READY -and (Test-Path $ensureScript)) {
     & $ensureScript
 }
 
@@ -163,6 +166,71 @@ function Invoke-PythonScript {
         }
         Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Get-CombinedSha256 {
+    param([string[]]$Values)
+
+    $joined = [string]::Join("`n", $Values)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($joined)
+    [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes))
+}
+
+function Get-Inochi2dBuildStamp {
+    $entries = [System.Collections.Generic.List[string]]::new()
+    $entries.Add("stamp-version=$buildStampVersion")
+    $entries.Add("target=$targetTriple")
+    $entries.Add("script=$((Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash)")
+
+    Get-ChildItem -LiteralPath $sourceDir -File -Recurse |
+        Where-Object { $_.FullName -notlike "$outDir*" } |
+        Where-Object { $_.FullName -notmatch '[\\/]\.git([\\/]|$)' } |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relativePath = [System.IO.Path]::GetRelativePath($sourceDir, $_.FullName)
+            $entries.Add("$relativePath=$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash)")
+        }
+
+    Get-CombinedSha256 -Values $entries
+}
+
+function Restore-CachedInochi2dArtifacts {
+    param([string]$ExpectedStamp)
+
+    $cachedStamp = if (Test-Path $buildStampPath) {
+        (Get-Content -LiteralPath $buildStampPath -Raw).Trim()
+    } else {
+        ""
+    }
+
+    if ([string]::IsNullOrWhiteSpace($cachedStamp) -or $cachedStamp -ne $ExpectedStamp) {
+        return $false
+    }
+
+    foreach ($file in @(
+        (Join-Path $artifactCacheDir "inochi2d-c.dll"),
+        (Join-Path $artifactCacheDir "inochi2d-c.lib"),
+        (Join-Path $runtimeLibDir "druntime-ldc.lib"),
+        (Join-Path $runtimeLibDir "phobos2-ldc.lib")
+    )) {
+        if (-not (Test-Path $file)) {
+            return $false
+        }
+    }
+
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $artifactCacheDir "inochi2d-c.dll") -Destination (Join-Path $outDir "inochi2d-c.dll") -Force
+    Copy-Item -LiteralPath (Join-Path $artifactCacheDir "inochi2d-c.lib") -Destination (Join-Path $outDir "inochi2d-c.lib") -Force
+    return $true
+}
+
+function Save-CachedInochi2dArtifacts {
+    param([string]$ExpectedStamp)
+
+    New-Item -ItemType Directory -Force -Path $artifactCacheDir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $outDir "inochi2d-c.dll") -Destination (Join-Path $artifactCacheDir "inochi2d-c.dll") -Force
+    Copy-Item -LiteralPath (Join-Path $outDir "inochi2d-c.lib") -Destination (Join-Path $artifactCacheDir "inochi2d-c.lib") -Force
+    Set-Content -LiteralPath $buildStampPath -Value "$ExpectedStamp`n" -Encoding ascii
 }
 
 function Ensure-HostGitver {
@@ -559,6 +627,15 @@ if (-not (Test-Path $sourceDir)) {
     throw "missing submodule: $sourceDir`nrun: git submodule update --init --recursive"
 }
 
+$expectedBuildStamp = Get-Inochi2dBuildStamp
+if (Restore-CachedInochi2dArtifacts -ExpectedStamp $expectedBuildStamp) {
+    Write-Host "Reusing cached Windows inochi2d artifacts for stamp $expectedBuildStamp"
+    Get-Item (Join-Path $outDir "inochi2d-c.dll"), (Join-Path $outDir "inochi2d-c.lib") | ForEach-Object {
+        Write-Host $_.FullName
+    }
+    return
+}
+
 $cargo = Require-Command "cargo"
 Require-Command "cargo-xwin" | Out-Null
 $dub = Require-Command "dub"
@@ -618,6 +695,8 @@ finally {
     $env:DFLAGS = $previousDFlags
     $ErrorActionPreference = $previousCrossCompileErrorAction
 }
+
+Save-CachedInochi2dArtifacts -ExpectedStamp $expectedBuildStamp
 
 Get-Item (Join-Path $outDir "inochi2d-c.dll"), (Join-Path $outDir "inochi2d-c.lib") | ForEach-Object {
     Write-Host $_.FullName

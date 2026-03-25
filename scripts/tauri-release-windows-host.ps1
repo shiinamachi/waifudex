@@ -41,6 +41,7 @@ try {
     }
 
     & .\scripts\ensure-windows-host-build-env.ps1
+    $env:WAIFUDEX_WINDOWS_HOST_BUILD_ENV_READY = "1"
     node .\scripts\sync-app-version.mjs
     node .\scripts\generate-dependency-inventory.mjs
     & .\scripts\build-inochi2d-windows.ps1

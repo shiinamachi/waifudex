@@ -74,6 +74,9 @@ function Invoke-WithCargoXwinToolchain {
         $env:PATH = (($toolchainDir, $env:PATH) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ";"
         $env:XWIN_CROSS_COMPILER = "clang"
         & $ScriptBlock
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo-xwin toolchain command failed with exit code $LASTEXITCODE"
+        }
     }
     finally {
         $env:PATH = $previousPath

@@ -39,6 +39,50 @@ jobs:
           install: true
           cache: true
 
+      - name: Resolve pnpm store path
+        id: pnpm_store
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $storePath = (pnpm store path).Trim()
+          "path=$storePath" >> $env:GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: windows-release-pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            windows-release-pnpm-${{ runner.os }}-
+
+      - name: Cache Windows toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\bin\cargo-xwin.exe
+            ~\AppData\Local\cargo-xwin
+            ~\AppData\Local\waifudex-tools\ldc2
+            ~\AppData\Local\dub\packages
+          key: windows-release-toolchain-${{ runner.os }}-${{ hashFiles('mise.toml', 'scripts/ensure-windows-host-build-env.ps1', 'scripts/setup-windows-host-build-env.ps1') }}
+          restore-keys: |
+            windows-release-toolchain-${{ runner.os }}-
+
+      - name: Cache inochi2d artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cache\waifudex\inochi2d-windows
+          key: windows-release-inochi2d-${{ runner.os }}-${{ hashFiles('scripts/build-inochi2d-windows.ps1', 'scripts/ensure-windows-host-build-env.ps1', 'third_party/inochi2d-c/**') }}
+          restore-keys: |
+            windows-release-inochi2d-${{ runner.os }}-
+
+      - name: Cache Rust dependencies and build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> src-tauri/target
+          cache-on-failure: true
+
       - name: Ensure main branch and validate release version
         id: validate
         shell: pwsh
@@ -169,9 +213,19 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          $bundleRootPath = Join-Path $PWD "src-tauri\target\release\bundle"
-          if (-not (Test-Path -LiteralPath $bundleRootPath)) {
-            throw "Tauri bundle output directory not found: $bundleRootPath"
+          $bundleCandidates = @(
+            (Join-Path $PWD "target\release\bundle"),
+            (Join-Path $PWD "src-tauri\target\release\bundle"),
+            (Join-Path $PWD "target\x86_64-pc-windows-msvc\release\bundle"),
+            (Join-Path $PWD "src-tauri\target\x86_64-pc-windows-msvc\release\bundle")
+          )
+
+          $bundleRootPath = $bundleCandidates |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
+
+          if (-not $bundleRootPath) {
+            throw "Tauri bundle output directory not found. Checked: $($bundleCandidates -join '; ')"
           }
 
           $installer = Get-ChildItem -Path $bundleRootPath -Recurse -File |
