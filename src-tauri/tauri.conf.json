@@ -21,7 +21,13 @@
         "icon": [
             "icons/icon.png",
             "icons/icon.ico"
-        ]
+        ],
+        "windows": {
+            "nsis": {
+                "template": "windows/installer.nsi",
+                "installMode": "currentUser"
+            }
+        }
     },
     "plugins": {
         "updater": {

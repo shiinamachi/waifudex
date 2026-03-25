@@ -183,6 +183,31 @@ mod tests {
         );
     }
 
+    fn assert_windows_nsis_config(config: &Value, config_name: &str) {
+        let nsis = &config["bundle"]["windows"]["nsis"];
+
+        let template = nsis["template"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{config_name} should define bundle.windows.nsis.template"));
+        assert_eq!(
+            template, "windows/installer.nsi",
+            "{config_name} should use the custom one-click NSIS template"
+        );
+
+        let install_mode = nsis["installMode"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{config_name} should define bundle.windows.nsis.installMode"));
+        assert_eq!(
+            install_mode, "currentUser",
+            "{config_name} should default the NSIS installer to current-user installs"
+        );
+
+        assert!(
+            nsis["installerHooks"].is_null(),
+            "{config_name} should not rely on installer hooks for the one-click installer flow"
+        );
+    }
+
     #[test]
     fn shared_config_does_not_bundle_platform_specific_runtime() {
         assert!(
@@ -221,6 +246,32 @@ mod tests {
             &merged_config(tauri_windows_platform_config()),
             "tauri.windows.conf.json",
         );
+    }
+
+    #[test]
+    fn windows_nsis_shared_config_uses_custom_current_user_template() {
+        assert_windows_nsis_config(&tauri_config(), "tauri.conf.json");
+    }
+
+    #[test]
+    fn windows_nsis_updater_config_keeps_nsis_target_and_template() {
+        let merged = merged_config(tauri_windows_updater_config());
+
+        let targets = merged["bundle"]["targets"]
+            .as_array()
+            .unwrap_or_else(|| panic!("tauri.windows.updater.conf.json should define bundle.targets"));
+        assert_eq!(
+            targets.len(),
+            1,
+            "tauri.windows.updater.conf.json should only target nsis"
+        );
+        assert_eq!(
+            targets[0].as_str(),
+            Some("nsis"),
+            "tauri.windows.updater.conf.json should keep the updater artifact on nsis"
+        );
+
+        assert_windows_nsis_config(&merged, "tauri.windows.updater.conf.json");
     }
 
     #[test]
