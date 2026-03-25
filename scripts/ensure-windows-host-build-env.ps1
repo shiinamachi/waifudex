@@ -87,6 +87,23 @@ function Import-LlvmBin {
     }
 }
 
+function Refresh-PathFromMachine {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $segments = @()
+    if ($machinePath) {
+        $segments += $machinePath
+    }
+    if ($userPath) {
+        $segments += $userPath
+    }
+    if ($env:PATH) {
+        $segments += $env:PATH
+    }
+
+    $env:PATH = ($segments -join ";")
+}
+
 function Import-LdcBin {
     $candidates = @()
 
@@ -198,6 +215,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "mise run setup:windows-host-build failed with exit code $LASTEXITCODE"
 }
 
+Refresh-PathFromMachine
 Import-LlvmBin
 Import-LdcBin
 
