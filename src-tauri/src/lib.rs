@@ -140,4 +140,17 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn windows_nsis_uninstaller_progress_keeps_close_button_available() {
+        let installer_script = read_windows_installer_script();
+        let offending_snippet = r#"Function un.ProgressShow
+  GetDlgItem $0 $HWNDPARENT 1
+  ShowWindow $0 0"#;
+
+        assert!(
+            !installer_script.contains(offending_snippet),
+            "uninstaller progress must not hide the Close button",
+        );
+    }
 }

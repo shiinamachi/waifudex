@@ -393,8 +393,6 @@ FunctionEnd
 !insertmacro MUI_UNPAGE_INSTFILES
 
 Function un.ProgressShow
-  GetDlgItem $0 $HWNDPARENT 1
-  ShowWindow $0 0
   GetDlgItem $0 $HWNDPARENT 2
   ShowWindow $0 0
   GetDlgItem $0 $HWNDPARENT 3
