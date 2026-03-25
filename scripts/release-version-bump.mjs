@@ -36,6 +36,10 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (token === "--") {
+      continue;
+    }
+
     if (!token.startsWith("--")) {
       fail(`unexpected positional argument: ${token}`);
     }
