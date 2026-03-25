@@ -177,6 +177,13 @@ function Get-MissingWindowsBuildRequirements {
 Import-LlvmBin
 Import-LdcBin
 
+if (-not $env:XWIN_CLANG_CL) {
+    $clangCl = Get-Command "clang-cl" -ErrorAction SilentlyContinue
+    if ($clangCl) {
+        $env:XWIN_CLANG_CL = $clangCl.Source
+    }
+}
+
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -eq 0) {
     return
