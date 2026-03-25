@@ -63,33 +63,6 @@ function Ensure-CargoXwinToolchainBin {
     return $toolchainDir
 }
 
-function Get-CargoXwinSanitizedPath {
-    param([string]$ExistingPath = $env:PATH)
-
-    $toolchainDir = Ensure-CargoXwinToolchainBin
-    $pathEntries = [System.Collections.Generic.List[string]]::new()
-    $pathEntries.Add($toolchainDir)
-
-    foreach ($entry in ($ExistingPath -split ";")) {
-        if ([string]::IsNullOrWhiteSpace($entry)) {
-            continue
-        }
-
-        $trimmedEntry = $entry.Trim()
-        if ($trimmedEntry -eq $toolchainDir) {
-            continue
-        }
-
-        if (Test-Path -LiteralPath (Join-Path $trimmedEntry "clang.exe") -PathType Leaf) {
-            continue
-        }
-
-        $pathEntries.Add($trimmedEntry)
-    }
-
-    ($pathEntries | Select-Object -Unique) -join ";"
-}
-
 function Invoke-WithCargoXwinToolchain {
     param([Parameter(Mandatory = $true)][scriptblock]$ScriptBlock)
 
@@ -97,8 +70,9 @@ function Invoke-WithCargoXwinToolchain {
     $previousCrossCompiler = [Environment]::GetEnvironmentVariable("XWIN_CROSS_COMPILER")
 
     try {
-        $env:PATH = Get-CargoXwinSanitizedPath -ExistingPath $env:PATH
-        $env:XWIN_CROSS_COMPILER = "clang-cl"
+        $toolchainDir = Ensure-CargoXwinToolchainBin
+        $env:PATH = (($toolchainDir, $env:PATH) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ";"
+        $env:XWIN_CROSS_COMPILER = "clang"
         & $ScriptBlock
     }
     finally {
