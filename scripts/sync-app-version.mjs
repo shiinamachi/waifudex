@@ -25,7 +25,8 @@ async function main() {
   const nextCargoToml = cargoToml.replace(packageVersionPattern, `version = "${version}"`);
 
   const cargoLock = await fs.readFile(cargoLockPath, "utf8");
-  const lockPackagePattern = /(\[\[package\]\]\nname = "waifudex"\nversion = ")([^"]+)"/m;
+  const lockPackagePattern =
+    /(\[\[package\]\]\r?\nname = "waifudex"\r?\nversion = ")([^"]+)"/m;
   if (!lockPackagePattern.test(cargoLock)) {
     throw new Error('failed to locate package version in src-tauri/Cargo.lock');
   }
