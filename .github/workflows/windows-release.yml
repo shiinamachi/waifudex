@@ -169,21 +169,34 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          $bundleRoot = Join-Path $PWD "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
-          if (-not (Test-Path -LiteralPath $bundleRoot)) {
-            throw "Tauri bundle output directory not found: $bundleRoot"
+          $targetRoot = Join-Path $PWD "src-tauri\target"
+          if (-not (Test-Path -LiteralPath $targetRoot)) {
+            throw "Tauri target directory not found: $targetRoot"
           }
 
-          $installer = Get-ChildItem -Path $bundleRoot -Recurse -File |
+          $bundleRoot = Get-ChildItem -Path $targetRoot -Directory -Recurse |
+            Where-Object { $_.Name -eq "bundle" -and (Test-Path (Join-Path $_.FullName "nsis")) } |
+            Sort-Object FullName |
+            Select-Object -First 1
+
+          if (-not $bundleRoot) {
+            $knownDirs = Get-ChildItem -Path $targetRoot -Directory -Recurse |
+              Select-Object -ExpandProperty FullName
+            throw "Tauri bundle output directory not found under $targetRoot. Known directories: $($knownDirs -join '; ')"
+          }
+
+          $bundleRootPath = $bundleRoot.FullName
+
+          $installer = Get-ChildItem -Path $bundleRootPath -Recurse -File |
             Where-Object { $_.Name -like "*-setup.exe" } |
             Sort-Object FullName |
             Select-Object -First 1
 
           if (-not $installer) {
-            throw "Failed to locate NSIS installer under $bundleRoot"
+            throw "Failed to locate NSIS installer under $bundleRootPath"
           }
 
-          $installerSignature = Get-ChildItem -Path $bundleRoot -Recurse -File |
+          $installerSignature = Get-ChildItem -Path $bundleRootPath -Recurse -File |
             Where-Object { $_.Name -eq "$($installer.Name).sig" } |
             Select-Object -First 1
 
@@ -191,16 +204,16 @@ jobs:
             throw "Failed to locate installer signature for $($installer.Name)"
           }
 
-          $updaterBundle = Get-ChildItem -Path $bundleRoot -Recurse -File |
+          $updaterBundle = Get-ChildItem -Path $bundleRootPath -Recurse -File |
             Where-Object { $_.Name -like "*.nsis.zip" } |
             Sort-Object FullName |
             Select-Object -First 1
 
           if (-not $updaterBundle) {
-            throw "Failed to locate updater bundle under $bundleRoot"
+            throw "Failed to locate updater bundle under $bundleRootPath"
           }
 
-          $updaterSignature = Get-ChildItem -Path $bundleRoot -Recurse -File |
+          $updaterSignature = Get-ChildItem -Path $bundleRootPath -Recurse -File |
             Where-Object { $_.Name -eq "$($updaterBundle.Name).sig" } |
             Select-Object -First 1
 
