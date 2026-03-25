@@ -173,17 +173,25 @@ function Get-CombinedSha256 {
 
     $joined = [string]::Join("`n", $Values)
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($joined)
-    [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes))
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [Convert]::ToHexString($sha256.ComputeHash($bytes))
+    }
+    finally {
+        $sha256.Dispose()
+    }
 }
 
 function Get-FileSha256 {
     param([Parameter(Mandatory = $true)][string]$LiteralPath)
 
     $stream = [System.IO.File]::OpenRead($LiteralPath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($stream))
+        return [Convert]::ToHexString($sha256.ComputeHash($stream))
     }
     finally {
+        $sha256.Dispose()
         $stream.Dispose()
     }
 }
