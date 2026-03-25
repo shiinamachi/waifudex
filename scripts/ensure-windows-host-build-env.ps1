@@ -151,8 +151,7 @@ function Test-TauriNsisToolchainReady {
         "makensis.exe",
         "Include\MUI2.nsh",
         "Include\FileFunc.nsh",
-        "Include\Win\COM.nsh",
-        "Contrib\UIs\sdbarker_tiny.exe"
+        "Include\Win\COM.nsh"
     )) {
         if (-not (Test-Path (Join-Path $TauriNsisInstallRoot $required))) {
             return $false

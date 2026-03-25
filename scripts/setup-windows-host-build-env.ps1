@@ -233,8 +233,7 @@ function Test-TauriNsisToolchainReady {
         "makensis.exe",
         "Include\MUI2.nsh",
         "Include\FileFunc.nsh",
-        "Include\Win\COM.nsh",
-        "Contrib\UIs\sdbarker_tiny.exe"
+        "Include\Win\COM.nsh"
     )) {
         if (-not (Test-Path (Join-Path $TauriNsisInstallRoot $required))) {
             return $false
@@ -244,15 +243,47 @@ function Test-TauriNsisToolchainReady {
     return $true
 }
 
+function Resolve-SystemNsisRoot {
+    $makensis = Get-Command "makensis" -ErrorAction SilentlyContinue
+    if ($makensis) {
+        return Split-Path -Parent $makensis.Source
+    }
+
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles(x86)} "NSIS"),
+        (Join-Path ${env:ProgramFiles} "NSIS"),
+        (Join-Path $env:ProgramData "chocolatey\lib\nsis\tools")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    $candidate = $candidates | Select-Object -First 1
+    if ($candidate) {
+        return $candidate
+    }
+
+    return $null
+}
+
 function Ensure-TauriNsisToolchain {
     if (Test-TauriNsisToolchainReady) {
         return
     }
 
-    $systemNsisRoot = @(
-        (Join-Path ${env:ProgramFiles(x86)} "NSIS"),
-        (Join-Path ${env:ProgramFiles} "NSIS")
-    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    $systemNsisRoot = Resolve-SystemNsisRoot
+
+    if (-not $systemNsisRoot) {
+        if (-not (Test-CommandAvailable "choco")) {
+            throw "NSIS is required but no system NSIS installation was found and Chocolatey is unavailable."
+        }
+
+        Write-Host "Installing NSIS via Chocolatey..."
+        & choco install nsis --no-progress -y
+        if ($LASTEXITCODE -ne 0) {
+            throw "Chocolatey failed to install NSIS with exit code $LASTEXITCODE"
+        }
+
+        Refresh-PathFromMachine
+        $systemNsisRoot = Resolve-SystemNsisRoot
+    }
 
     if (-not $systemNsisRoot) {
         throw "NSIS is required but no system NSIS installation was found."
