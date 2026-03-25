@@ -559,10 +559,15 @@ if (-not (Resolve-PythonCommand)) {
     throw "missing required Python runtime; run mise install or make python/py/python3 executable in this shell"
 }
 
-& $cargo xwin env --target $targetTriple 2>&1 | Out-Null
+if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
+    & $cargo xwin cache xwin --cross-compiler clang
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo xwin cache xwin --cross-compiler clang failed with exit code $LASTEXITCODE"
+    }
+}
 
 if (-not (Test-Path (Join-Path $xwinDir "crt\include")) -or -not (Test-Path (Join-Path $xwinDir "sdk\lib\um\x86_64"))) {
-    throw "missing cargo-xwin sysroot at $xwinDir; run cargo xwin env --target $targetTriple once first"
+    throw "missing cargo-xwin sysroot at $xwinDir"
 }
 
 Ensure-HostGitver -Dub $dub -Ldc2 $ldc2

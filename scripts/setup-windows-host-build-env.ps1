@@ -305,18 +305,6 @@ if (-not (Resolve-PythonCommand)) {
     throw "Failed to provision a usable Python runtime. Run mise install again or verify the Python launcher on this Windows host."
 }
 
-if (-not $env:XWIN_CLANG_CL) {
-    $clangCl = Get-Command "clang-cl" -ErrorAction SilentlyContinue
-    if ($clangCl) {
-        $env:XWIN_CLANG_CL = $clangCl.Source
-    }
-}
-
-& cargo xwin env --target x86_64-pc-windows-msvc | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    throw "cargo xwin env --target x86_64-pc-windows-msvc failed with exit code $LASTEXITCODE"
-}
-
 $xwinDir = if ($env:XWIN_DIR) {
     $env:XWIN_DIR
 } elseif ($env:XWIN_CACHE_DIR) {
