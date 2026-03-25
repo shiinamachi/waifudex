@@ -329,6 +329,13 @@ Function PageLeaveReinstall
 FunctionEnd
 
 Var AppStartMenuFolder
+!if "${STARTMENUFOLDER}" != ""
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+  !define MUI_STARTMENUPAGE_DEFAULTFOLDER "${STARTMENUFOLDER}"
+!else
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE Skip
+!endif
+!insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW InstallProgressShow
 !insertmacro MUI_PAGE_INSTFILES
 

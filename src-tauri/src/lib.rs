@@ -132,6 +132,7 @@ mod tests {
             r#"BrandingText " ""#,
             r#"ShowInstDetails nevershow"#,
             r#"ShowUninstDetails nevershow"#,
+            r#"!insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder"#,
         ] {
             assert!(
                 installer_script.contains(expected),
