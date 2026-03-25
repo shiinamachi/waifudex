@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
+    "release:version:bump": "node ./scripts/release-version-bump.mjs",
     "version:sync": "node ./scripts/sync-app-version.mjs",
     "dependencies:generate": "node ./scripts/generate-dependency-inventory.mjs",
     "dev": "node ./scripts/generate-dependency-inventory.mjs && vite",

@@ -1,0 +1,256 @@
+name: Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version in semver format, for example 0.1.1"
+        required: true
+        type: string
+      release_notes:
+        description: "Optional release notes used for both the GitHub Release body and latest.json"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and Publish Windows Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Install pinned runtimes from mise
+        uses: jdx/mise-action@v4
+        with:
+          install: true
+          cache: true
+
+      - name: Ensure main branch and validate release version
+        id: validate
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          if ("${{ github.ref_name }}" -ne "main") {
+            throw "Windows releases must be dispatched from the main branch."
+          }
+
+          if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+            throw "Release version must be a valid semver string."
+          }
+
+          $currentVersion = node -p "require('./package.json').version"
+          if ($currentVersion -eq $env:RELEASE_VERSION) {
+            throw "Requested version already matches package.json version $currentVersion. Choose a new version before releasing."
+          }
+
+          git fetch --tags --force
+          $tagName = "v$($env:RELEASE_VERSION)"
+          $existingTag = git tag --list $tagName
+          if (-not [string]::IsNullOrWhiteSpace($existingTag)) {
+            throw "Tag $tagName already exists."
+          }
+
+          $releaseName = "waifudex $tagName"
+
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+          "release_base_url=https://github.com/${{ github.repository }}/releases/download/$tagName/" >> $env:GITHUB_OUTPUT
+
+      - name: Install JavaScript dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump release version files
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: pnpm run release:version:bump -- --version $env:RELEASE_VERSION
+
+      - name: Commit and push version bump
+        id: commit
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          git commit -m "chore: release v$($env:RELEASE_VERSION)"
+          git push origin HEAD:main
+
+          $commitSha = (git rev-parse HEAD).Trim()
+          "commit_sha=$commitSha" >> $env:GITHUB_OUTPUT
+
+      - name: Create and push release tag
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ steps.validate.outputs.tag_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          git tag -a $env:TAG_NAME -m "Release $env:TAG_NAME"
+          git push origin $env:TAG_NAME
+
+      - name: Prepare release notes
+        id: release_notes
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ steps.validate.outputs.tag_name }}
+          COMMIT_SHA: ${{ steps.commit.outputs.commit_sha }}
+          INPUT_RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $notesPath = Join-Path $PWD "release-notes.md"
+          $body = $env:INPUT_RELEASE_NOTES
+
+          if ([string]::IsNullOrWhiteSpace($body)) {
+            $body = @(
+              "## Release Metadata"
+              "- Version: $($env:TAG_NAME)"
+              "- Commit: $($env:COMMIT_SHA)"
+              "- Installer target: windows-x86_64"
+              "- Updater manifest: latest.json"
+            ) -join "`n"
+          }
+
+          [System.IO.File]::WriteAllText($notesPath, "$body`n")
+          "body_path=$notesPath" >> $env:GITHUB_OUTPUT
+
+      - name: Restore Tauri signing key
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "TAURI_SIGNING_PRIVATE_KEY secret is required."
+          }
+
+          $signingKeyPath = Join-Path $PWD "production.key"
+          [System.IO.File]::WriteAllText($signingKeyPath, $env:TAURI_SIGNING_PRIVATE_KEY)
+
+      - name: Build signed Windows updater release
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri:release:windows
+
+      - name: Locate updater assets
+        id: assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $bundleRoot = Join-Path $PWD "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
+          if (-not (Test-Path -LiteralPath $bundleRoot)) {
+            throw "Tauri bundle output directory not found: $bundleRoot"
+          }
+
+          $installer = Get-ChildItem -Path $bundleRoot -Recurse -File |
+            Where-Object { $_.Name -like "*-setup.exe" } |
+            Sort-Object FullName |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw "Failed to locate NSIS installer under $bundleRoot"
+          }
+
+          $installerSignature = Get-ChildItem -Path $bundleRoot -Recurse -File |
+            Where-Object { $_.Name -eq "$($installer.Name).sig" } |
+            Select-Object -First 1
+
+          if (-not $installerSignature) {
+            throw "Failed to locate installer signature for $($installer.Name)"
+          }
+
+          $updaterBundle = Get-ChildItem -Path $bundleRoot -Recurse -File |
+            Where-Object { $_.Name -like "*.nsis.zip" } |
+            Sort-Object FullName |
+            Select-Object -First 1
+
+          if (-not $updaterBundle) {
+            throw "Failed to locate updater bundle under $bundleRoot"
+          }
+
+          $updaterSignature = Get-ChildItem -Path $bundleRoot -Recurse -File |
+            Where-Object { $_.Name -eq "$($updaterBundle.Name).sig" } |
+            Select-Object -First 1
+
+          if (-not $updaterSignature) {
+            throw "Failed to locate updater signature for $($updaterBundle.Name)"
+          }
+
+          "installer_path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+          "installer_signature_path=$($installerSignature.FullName)" >> $env:GITHUB_OUTPUT
+          "updater_bundle_path=$($updaterBundle.FullName)" >> $env:GITHUB_OUTPUT
+          "updater_bundle_name=$($updaterBundle.Name)" >> $env:GITHUB_OUTPUT
+          "updater_signature_path=$($updaterSignature.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Generate latest.json
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_BASE_URL: ${{ steps.validate.outputs.release_base_url }}
+          INSTALLER_NAME: ${{ steps.assets.outputs.updater_bundle_name }}
+          SIGNATURE_PATH: ${{ steps.assets.outputs.updater_signature_path }}
+          RELEASE_NOTES_PATH: ${{ steps.release_notes.outputs.body_path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          node ./scripts/generate-updater-json.mjs `
+            --version $env:RELEASE_VERSION `
+            --installer $env:INSTALLER_NAME `
+            --signature-file $env:SIGNATURE_PATH `
+            --release-base-url $env:RELEASE_BASE_URL `
+            --output latest.json `
+            --notes-file $env:RELEASE_NOTES_PATH
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.validate.outputs.tag_name }}
+          name: ${{ steps.validate.outputs.release_name }}
+          body_path: ${{ steps.release_notes.outputs.body_path }}
+          files: |
+            ${{ steps.assets.outputs.installer_path }}
+            ${{ steps.assets.outputs.installer_signature_path }}
+            ${{ steps.assets.outputs.updater_bundle_path }}
+            ${{ steps.assets.outputs.updater_signature_path }}
+            latest.json
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+          target_commitish: ${{ steps.commit.outputs.commit_sha }}
+
+      - name: Clean up signing key
+        if: always()
+        shell: pwsh
+        run: |
+          $signingKeyPath = Join-Path $PWD "production.key"
+          if (Test-Path -LiteralPath $signingKeyPath) {
+            Remove-Item -LiteralPath $signingKeyPath -Force
+          }
