@@ -169,23 +169,10 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          $targetRoot = Join-Path $PWD "src-tauri\target"
-          if (-not (Test-Path -LiteralPath $targetRoot)) {
-            throw "Tauri target directory not found: $targetRoot"
+          $bundleRootPath = Join-Path $PWD "src-tauri\target\release\bundle"
+          if (-not (Test-Path -LiteralPath $bundleRootPath)) {
+            throw "Tauri bundle output directory not found: $bundleRootPath"
           }
-
-          $bundleRoot = Get-ChildItem -Path $targetRoot -Directory -Recurse |
-            Where-Object { $_.Name -eq "bundle" -and (Test-Path (Join-Path $_.FullName "nsis")) } |
-            Sort-Object FullName |
-            Select-Object -First 1
-
-          if (-not $bundleRoot) {
-            $knownDirs = Get-ChildItem -Path $targetRoot -Directory -Recurse |
-              Select-Object -ExpandProperty FullName
-            throw "Tauri bundle output directory not found under $targetRoot. Known directories: $($knownDirs -join '; ')"
-          }
-
-          $bundleRootPath = $bundleRoot.FullName
 
           $installer = Get-ChildItem -Path $bundleRootPath -Recurse -File |
             Where-Object { $_.Name -like "*-setup.exe" } |
