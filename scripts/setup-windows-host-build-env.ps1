@@ -286,6 +286,24 @@ if (-not (Test-CommandAvailable "cargo-xwin")) {
 
 Install-LdcDirect
 
+$clang = Get-Command "clang" -ErrorAction SilentlyContinue
+if ($clang) {
+    $cacheDir = if ($env:LOCALAPPDATA) {
+        Join-Path $env:LOCALAPPDATA "cargo-xwin"
+    } else {
+        Join-Path $env:USERPROFILE ".cache\cargo-xwin"
+    }
+
+    $clangClPath = Join-Path $cacheDir "clang-cl.exe"
+    if (-not (Test-Path $clangClPath)) {
+        Write-Host "Pre-populating cargo-xwin clang-cl cache to avoid symlink creation..."
+        if (-not (Test-Path $cacheDir)) {
+            New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+        }
+        Copy-Item -LiteralPath $clang.Source -Destination $clangClPath -Force
+    }
+}
+
 if (-not (Test-CommandAvailable "clang") -or -not (Test-CommandAvailable "llvm-lib") -or -not (Test-CommandAvailable "lld-link")) {
     throw @"
 LLVM installation did not expose the required tools in the current environment.

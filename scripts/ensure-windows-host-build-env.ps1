@@ -191,8 +191,33 @@ function Get-MissingWindowsBuildRequirements {
     return $missing
 }
 
+function Ensure-CargoXwinClangCl {
+    $clang = Get-Command "clang" -ErrorAction SilentlyContinue
+    if (-not $clang) {
+        return
+    }
+
+    $cacheDir = if ($env:LOCALAPPDATA) {
+        Join-Path $env:LOCALAPPDATA "cargo-xwin"
+    } else {
+        Join-Path $env:USERPROFILE ".cache\cargo-xwin"
+    }
+
+    $clangClPath = Join-Path $cacheDir "clang-cl.exe"
+    if (Test-Path $clangClPath) {
+        return
+    }
+
+    Write-Host "Pre-populating cargo-xwin clang-cl cache to avoid symlink creation..."
+    if (-not (Test-Path $cacheDir)) {
+        New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+    }
+    Copy-Item -LiteralPath $clang.Source -Destination $clangClPath -Force
+}
+
 Import-LlvmBin
 Import-LdcBin
+Ensure-CargoXwinClangCl
 
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -eq 0) {
@@ -218,6 +243,7 @@ if ($LASTEXITCODE -ne 0) {
 Refresh-PathFromMachine
 Import-LlvmBin
 Import-LdcBin
+Ensure-CargoXwinClangCl
 
 $missing = Get-MissingWindowsBuildRequirements
 if ($missing.Count -gt 0) {
