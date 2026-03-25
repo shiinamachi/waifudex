@@ -176,11 +176,23 @@ function Get-CombinedSha256 {
     [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes))
 }
 
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    try {
+        return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($stream))
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Get-Inochi2dBuildStamp {
     $entries = [System.Collections.Generic.List[string]]::new()
     $entries.Add("stamp-version=$buildStampVersion")
     $entries.Add("target=$targetTriple")
-    $entries.Add("script=$((Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash)")
+    $entries.Add("script=$(Get-FileSha256 -LiteralPath $PSCommandPath)")
 
     Get-ChildItem -LiteralPath $sourceDir -File -Recurse |
         Where-Object { $_.FullName -notlike "$outDir*" } |
@@ -188,7 +200,7 @@ function Get-Inochi2dBuildStamp {
         Sort-Object FullName |
         ForEach-Object {
             $relativePath = [System.IO.Path]::GetRelativePath($sourceDir, $_.FullName)
-            $entries.Add("$relativePath=$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash)")
+            $entries.Add("$relativePath=$(Get-FileSha256 -LiteralPath $_.FullName)")
         }
 
     Get-CombinedSha256 -Values $entries
