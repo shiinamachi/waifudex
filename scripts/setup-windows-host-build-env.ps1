@@ -2,8 +2,9 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $LdcVersion = "1.40.1"
-$LdcArchiveName = "ldc2-$LdcVersion-windows-multilib"
-$LdcDownloadUrl = "https://github.com/ldc-developers/ldc/releases/download/v$LdcVersion/$LdcArchiveName.zip"
+$LdcReleaseTag = "v$LdcVersion"
+$LdcArchiveName = "ldc2-$LdcVersion-windows-multilib.7z"
+$LdcDownloadUrl = "https://github.com/ldc-developers/ldc/releases/download/$LdcReleaseTag/$LdcArchiveName"
 $LdcInstallRoot = Join-Path $env:LOCALAPPDATA "waifudex-tools\ldc2"
 
 function Test-CommandAvailable {
@@ -91,6 +92,84 @@ function Refresh-PathFromMachine {
     }
 
     $env:PATH = ($segments -join ";")
+}
+
+function Resolve-LdcDownloadSpec {
+    $releaseApiUrl = "https://api.github.com/repos/ldc-developers/ldc/releases/tags/$LdcReleaseTag"
+    Write-Host "Resolving LDC release asset from $releaseApiUrl..."
+
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+    $release = Invoke-RestMethod -Uri $releaseApiUrl -UseBasicParsing
+    if (-not $release -or -not $release.assets) {
+        throw "Failed to resolve LDC release assets for $LdcReleaseTag"
+    }
+
+    $preferredNames = @(
+        "ldc2-$LdcVersion-windows-multilib.7z",
+        "ldc2-$LdcVersion-windows-multilib.zip"
+    )
+
+    foreach ($assetName in $preferredNames) {
+        $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+        if ($asset) {
+            return [pscustomobject]@{
+                Name = $asset.name
+                Url  = $asset.browser_download_url
+            }
+        }
+    }
+
+    $availableWindowsAssets = $release.assets |
+        Where-Object { $_.name -like "ldc2-$LdcVersion-windows-*" } |
+        Select-Object -ExpandProperty name
+
+    throw "Could not find a supported Windows multilib LDC archive for $LdcReleaseTag. Available Windows assets: $($availableWindowsAssets -join ', ')"
+}
+
+function Expand-LdcArchive {
+    param(
+        [string]$ArchivePath,
+        [string]$DestinationPath
+    )
+
+    $extension = [System.IO.Path]::GetExtension($ArchivePath)
+    if ($extension -ieq ".zip") {
+        Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
+        return
+    }
+
+    if ($extension -ieq ".7z") {
+        $sevenZip = Get-Command "7z" -ErrorAction SilentlyContinue
+        $sevenZipPath = $null
+        if ($sevenZip) {
+            $sevenZipPath = $sevenZip.Source
+        }
+        else {
+            foreach ($candidate in @(
+                (Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"),
+                (Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe"),
+                (Join-Path $env:ChocolateyInstall "bin\7z.exe")
+            )) {
+                if ($candidate -and (Test-Path $candidate)) {
+                    $sevenZipPath = $candidate
+                    break
+                }
+            }
+        }
+
+        if (-not $sevenZipPath) {
+            throw "7z is required to extract $ArchivePath but was not found on PATH"
+        }
+
+        & $sevenZipPath x "-o$DestinationPath" -y $ArchivePath *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "7z extraction failed for $ArchivePath with exit code $LASTEXITCODE"
+        }
+
+        return
+    }
+
+    throw "Unsupported LDC archive format: $ArchivePath"
 }
 
 function Import-LlvmBin {
@@ -204,19 +283,21 @@ function Install-LdcDirect {
     }
 
     Write-Host "Downloading LDC $LdcVersion from GitHub..."
-    $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "$LdcArchiveName.zip"
+    $downloadSpec = Resolve-LdcDownloadSpec
+    $tempArchive = Join-Path ([System.IO.Path]::GetTempPath()) $downloadSpec.Name
     $tempExtract = Join-Path ([System.IO.Path]::GetTempPath()) "ldc-extract-$([System.IO.Path]::GetRandomFileName())"
 
     try {
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        Invoke-WebRequest -Uri $LdcDownloadUrl -OutFile $tempZip -UseBasicParsing
-        if (-not (Test-Path $tempZip)) {
-            throw "Failed to download LDC archive from $LdcDownloadUrl"
+        Write-Host "Downloading $($downloadSpec.Name) from $($downloadSpec.Url)..."
+        Invoke-WebRequest -Uri $downloadSpec.Url -OutFile $tempArchive -UseBasicParsing
+        if (-not (Test-Path $tempArchive)) {
+            throw "Failed to download LDC archive from $($downloadSpec.Url)"
         }
 
         Write-Host "Extracting LDC to $LdcInstallRoot..."
         New-Item -ItemType Directory -Force -Path $tempExtract | Out-Null
-        Expand-Archive -LiteralPath $tempZip -DestinationPath $tempExtract -Force
+        Expand-LdcArchive -ArchivePath $tempArchive -DestinationPath $tempExtract
 
         $extractedDir = Get-ChildItem -LiteralPath $tempExtract -Directory | Select-Object -First 1
         if (-not $extractedDir) {
@@ -233,7 +314,7 @@ function Install-LdcDirect {
         Move-Item -LiteralPath $extractedDir.FullName -Destination $LdcInstallRoot -Force
     }
     finally {
-        Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+        Remove-Item $tempArchive -Force -ErrorAction SilentlyContinue
         Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
     }
 
