@@ -89,12 +89,12 @@ mod tests {
         parse_json(include_str!("../tauri.linux.conf.json"))
     }
 
-    fn tauri_windows_updater_config() -> Value {
-        parse_json(include_str!("../tauri.windows.updater.conf.json"))
-    }
-
     fn tauri_windows_platform_config() -> Value {
         parse_json(include_str!("../tauri.windows.conf.json"))
+    }
+
+    fn windows_release_script() -> &'static str {
+        include_str!("../../scripts/tauri-release-windows-host.ps1")
     }
 
     fn apply_merge_patch(target: &mut Value, patch: &Value) {
@@ -123,6 +123,12 @@ mod tests {
     fn merged_config(overlay: Value) -> Value {
         let mut merged = tauri_config();
         apply_merge_patch(&mut merged, &overlay);
+        merged
+    }
+
+    fn merged_windows_build_config() -> Value {
+        let mut merged = merged_config(tauri_windows_platform_config());
+        apply_merge_patch(&mut merged, &tauri_windows_build_config());
         merged
     }
 
@@ -226,18 +232,7 @@ mod tests {
 
     #[test]
     fn windows_build_config_bundles_windows_inochi2d_runtime() {
-        assert_windows_bundle_resources(
-            &merged_config(tauri_windows_build_config()),
-            "tauri.windows.build.conf.json",
-        );
-    }
-
-    #[test]
-    fn windows_updater_config_bundles_windows_inochi2d_runtime() {
-        assert_windows_bundle_resources(
-            &merged_config(tauri_windows_updater_config()),
-            "tauri.windows.updater.conf.json",
-        );
+        assert_windows_bundle_resources(&merged_windows_build_config(), "tauri.windows.build.conf.json");
     }
 
     #[test]
@@ -250,43 +245,53 @@ mod tests {
 
     #[test]
     fn windows_nsis_shared_config_uses_custom_current_user_template() {
-        assert_windows_nsis_config(&tauri_config(), "tauri.conf.json");
+        assert!(tauri_config()["bundle"]["windows"]["nsis"].is_null());
     }
 
     #[test]
-    fn windows_nsis_updater_config_keeps_nsis_target_and_template() {
-        let merged = merged_config(tauri_windows_updater_config());
+    fn windows_platform_config_defines_nsis_template_and_target() {
+        let merged = merged_config(tauri_windows_platform_config());
 
         let targets = merged["bundle"]["targets"]
             .as_array()
-            .unwrap_or_else(|| panic!("tauri.windows.updater.conf.json should define bundle.targets"));
+            .unwrap_or_else(|| panic!("tauri.windows.conf.json should define bundle.targets"));
         assert_eq!(
             targets.len(),
             1,
-            "tauri.windows.updater.conf.json should only target nsis"
+            "tauri.windows.conf.json should only target nsis on Windows bundles"
         );
         assert_eq!(
             targets[0].as_str(),
             Some("nsis"),
-            "tauri.windows.updater.conf.json should keep the updater artifact on nsis"
+            "tauri.windows.conf.json should keep the Windows bundle target on nsis"
         );
 
-        assert_windows_nsis_config(&merged, "tauri.windows.updater.conf.json");
+        assert_windows_nsis_config(&merged, "tauri.windows.conf.json");
     }
 
     #[test]
-    fn windows_build_overlay_defines_nsis_template_directly() {
-        assert_windows_nsis_config(
-            &tauri_windows_build_config(),
-            "tauri.windows.build.conf.json",
+    fn windows_build_overlay_keeps_before_build_command_empty() {
+        let config = tauri_windows_build_config();
+        let before_build_command = config["build"]["beforeBuildCommand"]
+            .as_str()
+            .unwrap_or_else(|| {
+                panic!("tauri.windows.build.conf.json should define build.beforeBuildCommand")
+            });
+        assert_eq!(
+            before_build_command, "",
+            "tauri.windows.build.conf.json should skip beforeBuildCommand because the wrapper script already runs Vite"
         );
     }
 
     #[test]
-    fn windows_updater_overlay_defines_nsis_template_directly() {
-        assert_windows_nsis_config(
-            &tauri_windows_updater_config(),
-            "tauri.windows.updater.conf.json",
+    fn windows_release_script_uses_build_overlay_only() {
+        assert!(
+            windows_release_script().contains("tauri.windows.build.conf.json"),
+            "tauri-release-windows-host.ps1 should reuse the Windows build overlay"
+        );
+        assert!(
+            !windows_release_script().contains("tauri.windows.updater.conf.json"),
+            "tauri-release-windows-host.ps1 should not depend on a separate updater overlay"
         );
     }
 

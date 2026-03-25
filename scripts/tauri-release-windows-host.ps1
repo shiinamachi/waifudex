@@ -46,7 +46,7 @@ try {
 
     node $vitePath build
     $env:XWIN_ARCH = "x86_64"
-    node $tauriPath build --config src-tauri/tauri.windows.updater.conf.json --runner cargo-xwin -- --target x86_64-pc-windows-msvc
+    node $tauriPath build --config src-tauri/tauri.windows.build.conf.json --runner cargo-xwin -- --target x86_64-pc-windows-msvc
 }
 finally {
     if ($driveName) {
