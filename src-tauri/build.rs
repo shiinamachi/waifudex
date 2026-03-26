@@ -22,12 +22,15 @@ fn main() {
     } else if target_os == "windows" {
         let dll_path = std::path::Path::new(&manifest_dir)
             .join("../third_party/inochi2d-c/out/inochi2d-c.dll");
+        let mascot_model_path =
+            std::path::Path::new(&manifest_dir).join("../public/models/Aka.inx");
         println!("cargo:rerun-if-changed={}", dll_path.display());
+        println!("cargo:rerun-if-changed={}", mascot_model_path.display());
 
         if dll_path.exists() {
             std::env::set_var(
                 "TAURI_CONFIG",
-                r#"{"bundle":{"resources":{"../third_party/inochi2d-c/out/inochi2d-c.dll":"inochi2d-c.dll"}}}"#,
+                r#"{"bundle":{"resources":{"../public/models/Aka.inx":"models/Aka.inx","../third_party/inochi2d-c/out/inochi2d-c.dll":"inochi2d-c.dll"}}}"#,
             );
             let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
             if let Some(profile_dir) = out_dir.ancestors().nth(3) {

@@ -52,7 +52,9 @@ pub fn run() {
             app_settings::initialize(&app_handle)?;
             mascot_window::initialize(&app_handle)?;
             let _ = app_settings::sync_display_monitor_on_startup(&app_handle);
-            let _ = mascot::initialize_default_mascot(&app_handle);
+            if let Err(error) = mascot::initialize_default_mascot(&app_handle) {
+                eprintln!("failed to initialize default mascot: {error}");
+            }
             window::show_character_window(&app_handle)?;
             tray::build_tray(&app_handle)?;
             app_update::start_startup_check(app_handle.clone());
