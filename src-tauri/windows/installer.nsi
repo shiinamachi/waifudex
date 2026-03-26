@@ -25,7 +25,7 @@ ManifestDPIAwareness PerMonitorV2
 ${StrCase}
 ${StrLoc}
 
-!ifexist "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
+!if /FileExists "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
   !define MUI_UI "${NSISDIR}\Contrib\UIs\sdbarker_tiny.exe"
 !endif
 
