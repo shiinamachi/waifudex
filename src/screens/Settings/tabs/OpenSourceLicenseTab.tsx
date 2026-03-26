@@ -85,7 +85,6 @@ function collectSections(): InventorySection[] {
     inventoryData.frontend,
     inventoryData.tauriClient,
     inventoryData.inochi2dSys,
-    inventoryData.waifudexInox2dWasm,
     inventoryData.waifudexMascot,
   ].map((section) => ({
     label: section.label,

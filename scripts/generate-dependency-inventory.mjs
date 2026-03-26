@@ -23,11 +23,6 @@ const rustSections = [
     manifestPath: "crates/inochi2d-sys/Cargo.toml",
   },
   {
-    key: "waifudexInox2dWasm",
-    label: "waifudex-inox2d-wasm",
-    manifestPath: "crates/waifudex-inox2d-wasm/Cargo.toml",
-  },
-  {
     key: "waifudexMascot",
     label: "waifudex-mascot",
     manifestPath: "crates/waifudex-mascot/Cargo.toml",
