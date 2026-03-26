@@ -182,6 +182,8 @@ jobs:
               "- Installer target: windows-x86_64"
               "- Updater manifest: latest.json"
             ) -join "`n"
+          } else {
+            $body = $body.Replace('\r\n', "`r`n").Replace('\n', "`n")
           }
 
           [System.IO.File]::WriteAllText($notesPath, "$body`n")
