@@ -43,7 +43,7 @@ try {
     node $vitePath build
     $env:XWIN_ARCH = "x86_64"
     Invoke-WithCargoXwinToolchain {
-        node $tauriPath build --no-bundle --config $generatedTauriConfigPath --runner cargo-xwin -- --target x86_64-pc-windows-msvc
+        node $tauriPath build --no-bundle --config $generatedTauriConfigPath --target x86_64-pc-windows-msvc --runner cargo-xwin
     }
 }
 finally {
