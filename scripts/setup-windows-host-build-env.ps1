@@ -6,8 +6,6 @@ $LdcReleaseTag = "v$LdcVersion"
 $LdcArchiveName = "ldc2-$LdcVersion-windows-multilib.7z"
 $LdcDownloadUrl = "https://github.com/ldc-developers/ldc/releases/download/$LdcReleaseTag/$LdcArchiveName"
 $LdcInstallRoot = Join-Path $env:LOCALAPPDATA "waifudex-tools\ldc2"
-$TauriNsisInstallRoot = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
-
 function Test-CommandAvailable {
     param([string]$Name)
 
@@ -224,81 +222,6 @@ function Import-LdcBin {
     }
 }
 
-function Test-TauriNsisToolchainReady {
-    if (-not (Test-Path $TauriNsisInstallRoot)) {
-        return $false
-    }
-
-    foreach ($required in @(
-        "makensis.exe",
-        "Include\MUI2.nsh",
-        "Include\FileFunc.nsh",
-        "Include\Win\COM.nsh"
-    )) {
-        if (-not (Test-Path (Join-Path $TauriNsisInstallRoot $required))) {
-            return $false
-        }
-    }
-
-    return $true
-}
-
-function Resolve-SystemNsisRoot {
-    $makensis = Get-Command "makensis" -ErrorAction SilentlyContinue
-    if ($makensis) {
-        return Split-Path -Parent $makensis.Source
-    }
-
-    $candidates = @(
-        (Join-Path ${env:ProgramFiles(x86)} "NSIS"),
-        (Join-Path ${env:ProgramFiles} "NSIS"),
-        (Join-Path $env:ProgramData "chocolatey\lib\nsis\tools")
-    ) | Where-Object { $_ -and (Test-Path $_) }
-
-    $candidate = $candidates | Select-Object -First 1
-    if ($candidate) {
-        return $candidate
-    }
-
-    return $null
-}
-
-function Ensure-TauriNsisToolchain {
-    if (Test-TauriNsisToolchainReady) {
-        return
-    }
-
-    $systemNsisRoot = Resolve-SystemNsisRoot
-
-    if (-not $systemNsisRoot) {
-        if (-not (Test-CommandAvailable "choco")) {
-            throw "NSIS is required but no system NSIS installation was found and Chocolatey is unavailable."
-        }
-
-        Write-Host "Installing NSIS via Chocolatey..."
-        & choco install nsis --no-progress -y
-        if ($LASTEXITCODE -ne 0) {
-            throw "Chocolatey failed to install NSIS with exit code $LASTEXITCODE"
-        }
-
-        Refresh-PathFromMachine
-        $systemNsisRoot = Resolve-SystemNsisRoot
-    }
-
-    if (-not $systemNsisRoot) {
-        throw "NSIS is required but no system NSIS installation was found."
-    }
-
-    Write-Host "Seeding Tauri NSIS toolchain from $systemNsisRoot..."
-
-    if (Test-Path $TauriNsisInstallRoot) {
-        Remove-Item $TauriNsisInstallRoot -Recurse -Force
-    }
-
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $TauriNsisInstallRoot) | Out-Null
-    Copy-Item -LiteralPath $systemNsisRoot -Destination $TauriNsisInstallRoot -Recurse -Force
-}
-
 function Test-WingetPackageInstalled {
     param([string]$Id)
 
@@ -405,7 +328,6 @@ if ($LASTEXITCODE -ne 0) {
 Refresh-PathFromMachine
 Import-LlvmBin
 Import-LdcBin
-Ensure-TauriNsisToolchain
 
 if (-not (Test-Path ".\node_modules")) {
     & pnpm install

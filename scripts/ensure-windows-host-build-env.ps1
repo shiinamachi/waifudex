@@ -2,8 +2,6 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $LdcInstallRoot = Join-Path $env:LOCALAPPDATA "waifudex-tools\ldc2"
-$TauriNsisInstallRoot = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
-
 function Test-CommandAvailable {
     param([string]$Name)
 
@@ -142,25 +140,6 @@ function Import-LdcBin {
     }
 }
 
-function Test-TauriNsisToolchainReady {
-    if (-not (Test-Path $TauriNsisInstallRoot)) {
-        return $false
-    }
-
-    foreach ($required in @(
-        "makensis.exe",
-        "Include\MUI2.nsh",
-        "Include\FileFunc.nsh",
-        "Include\Win\COM.nsh"
-    )) {
-        if (-not (Test-Path (Join-Path $TauriNsisInstallRoot $required))) {
-            return $false
-        }
-    }
-
-    return $true
-}
-
 function Get-MissingWindowsBuildRequirements {
     $missing = [System.Collections.Generic.List[string]]::new()
 
@@ -192,10 +171,6 @@ function Get-MissingWindowsBuildRequirements {
 
     if (-not (Test-Path ".\node_modules")) {
         $missing.Add("node_modules")
-    }
-
-    if (-not (Test-TauriNsisToolchainReady)) {
-        $missing.Add("tauri-nsis-toolchain")
     }
 
     $xwinDir = if ($env:XWIN_DIR) {
