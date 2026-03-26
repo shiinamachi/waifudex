@@ -68,10 +68,10 @@ ${StrLoc}
 
 Var PassiveMode
 Var UpdateMode
-Var NoShortcutMode
+Var NoDesktopShortcutMode
 Var PassiveModeOption
 Var UpdateModeOption
-Var NoShortcutModeOption
+Var NoDesktopShortcutModeOption
 Var WixMode
 Var OldMainBinaryName
 
@@ -414,7 +414,7 @@ Function .onInit
   ; Default to a Squirrel-like one-click install flow while still allowing the
   ; usual NSIS command-line flags to opt into other behaviors.
   StrCpy $PassiveMode 1
-  StrCpy $NoShortcutMode 1
+  StrCpy $NoDesktopShortcutMode 1
   StrCpy $UpdateMode ""
 
   StrCpy $PassiveModeOption ""
@@ -423,10 +423,10 @@ Function .onInit
     StrCpy $PassiveMode 1
   ${EndIf}
 
-  StrCpy $NoShortcutModeOption ""
-  ${GetOptions} $CMDLINE "/NS" $NoShortcutModeOption
+  StrCpy $NoDesktopShortcutModeOption ""
+  ${GetOptions} $CMDLINE "/NS" $NoDesktopShortcutModeOption
   ${IfNot} ${Errors}
-    StrCpy $NoShortcutMode 1
+    StrCpy $NoDesktopShortcutMode 1
   ${EndIf}
 
   StrCpy $UpdateModeOption ""
@@ -885,11 +885,10 @@ Function CreateOrUpdateStartMenuShortcut
     Return
   ${EndIf}
 
-  ; Skip creating shortcut if in update mode or no shortcut mode
+  ; Skip creating shortcut if in update mode
   ; but always create if migrating from wix
   ${If} $WixMode = 0
     ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
       Return
     ${EndIf}
   ${EndIf}
@@ -914,11 +913,11 @@ Function CreateOrUpdateDesktopShortcut
     Return
   ${EndIf}
 
-  ; Skip creating shortcut if in update mode or no shortcut mode
+  ; Skip creating shortcut if in update mode or desktop shortcut disabled mode
   ; but always create if migrating from wix
   ${If} $WixMode = 0
     ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
+    ${OrIf} $NoDesktopShortcutMode = 1
       Return
     ${EndIf}
   ${EndIf}
