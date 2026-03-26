@@ -17,6 +17,10 @@
 - Codex CLI Live Monitoring
 - Kawaii Agent in my Desktop (based on [Inochi2D](https://github.com/inochi2d))
 
+## Support Platforms
+
+- Windows 10 / 11 (tested on Windows 11)
+
 ## Copyright
 
 Copyright © 2026 [shiinamachi](https://github.com/shiinamachi). All rights reserved.
