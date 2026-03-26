@@ -19,6 +19,7 @@ import {
 } from "./index.css";
 import SettingsDisplayTab from "./tabs/SettingsDisplayTab";
 import AboutTab from "./tabs/AboutTab";
+import ModelTab from "./tabs/ModelTab";
 
 const DEFAULT_TAB: TabValue = "display";
 
@@ -40,6 +41,7 @@ export default function Settings() {
           vertical
         >
           <Tab value="display">Display</Tab>
+          <Tab value="model">Model</Tab>
           <div className={tabListFooter}>
             <Divider />
             <Tab className={tabListFooterTab} value="about">
@@ -52,6 +54,7 @@ export default function Settings() {
           <div className={panelScroll}>
             {selectedTab === "display" && <SettingsDisplayTab />}
             {selectedTab === "about" && <AboutTab />}
+            {selectedTab === "model" && <ModelTab />}
           </div>
         </div>
       </div>

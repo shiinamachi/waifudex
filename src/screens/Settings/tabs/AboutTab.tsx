@@ -58,7 +58,12 @@ export default function AboutTab() {
         <div className={updateActions}>
           <Button
             appearance="secondary"
-            disabled={!appUpdate.isLoaded || appUpdate.isChecking || appUpdate.isReadyToRestart}
+            disabled={
+              !appUpdate.isLoaded ||
+              appUpdate.status === "disabled" ||
+              appUpdate.isChecking ||
+              appUpdate.isReadyToRestart
+            }
             onClick={() => void handleCheckForUpdates()}
           >
             Check for updates
