@@ -12,6 +12,7 @@ const POLLING_STATUSES = new Set<AppUpdateStatus>([
 const POLL_INTERVAL_MS = 1_000;
 
 export type AppUpdateStatus =
+  | "disabled"
   | "idle"
   | "checking"
   | "downloading"
@@ -60,6 +61,8 @@ function emitStoreChange() {
 
 function getStatusText(update: AppUpdateSnapshot): string {
   switch (update.status) {
+    case "disabled":
+      return "Updates are disabled in development builds.";
     case "idle":
       return "Ready to check for updates.";
     case "checking":

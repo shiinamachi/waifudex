@@ -9,6 +9,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppUpdateStatus {
+    Disabled,
     Idle,
     Checking,
     Downloading,
@@ -43,11 +44,16 @@ pub struct AppUpdateCoordinator {
 
 impl AppUpdateCoordinator {
     pub fn new(current_version: impl Into<String>) -> Self {
+        let updater_enabled = updater_is_enabled();
         Self {
             snapshot: AppUpdateSnapshot {
                 current_version: current_version.into(),
                 available_version: None,
-                status: AppUpdateStatus::Idle,
+                status: if updater_enabled {
+                    AppUpdateStatus::Idle
+                } else {
+                    AppUpdateStatus::Disabled
+                },
                 last_checked_at: None,
                 last_error: None,
                 should_prompt_restart: false,
@@ -61,7 +67,10 @@ impl AppUpdateCoordinator {
     }
 
     pub fn begin_check(&mut self, trigger: CheckTrigger) -> bool {
-        if self.check_in_progress || self.snapshot.status == AppUpdateStatus::ReadyToRestart {
+        if self.check_in_progress
+            || self.snapshot.status == AppUpdateStatus::Disabled
+            || self.snapshot.status == AppUpdateStatus::ReadyToRestart
+        {
             return false;
         }
 
@@ -193,6 +202,10 @@ fn now_timestamp() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .expect("Rfc3339 timestamp should format")
+}
+
+fn updater_is_enabled() -> bool {
+    !cfg!(debug_assertions)
 }
 
 pub fn start_startup_check<R: Runtime>(app: AppHandle<R>) {
