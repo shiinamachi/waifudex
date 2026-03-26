@@ -245,37 +245,17 @@ jobs:
             throw "Failed to locate installer signature for $($installer.Name)"
           }
 
-          $updaterBundle = Get-ChildItem -Path $bundleRootPath -Recurse -File |
-            Where-Object { $_.Name -like "*.nsis.zip" } |
-            Sort-Object FullName |
-            Select-Object -First 1
-
-          if (-not $updaterBundle) {
-            throw "Failed to locate updater bundle under $bundleRootPath"
-          }
-
-          $updaterSignature = Get-ChildItem -Path $bundleRootPath -Recurse -File |
-            Where-Object { $_.Name -eq "$($updaterBundle.Name).sig" } |
-            Select-Object -First 1
-
-          if (-not $updaterSignature) {
-            throw "Failed to locate updater signature for $($updaterBundle.Name)"
-          }
-
           "installer_path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
           "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
           "installer_signature_path=$($installerSignature.FullName)" >> $env:GITHUB_OUTPUT
-          "updater_bundle_path=$($updaterBundle.FullName)" >> $env:GITHUB_OUTPUT
-          "updater_bundle_name=$($updaterBundle.Name)" >> $env:GITHUB_OUTPUT
-          "updater_signature_path=$($updaterSignature.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Generate latest.json
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ github.event.inputs.version }}
           RELEASE_BASE_URL: ${{ steps.validate.outputs.release_base_url }}
-          INSTALLER_NAME: ${{ steps.assets.outputs.updater_bundle_name }}
-          SIGNATURE_PATH: ${{ steps.assets.outputs.updater_signature_path }}
+          INSTALLER_NAME: ${{ steps.assets.outputs.installer_name }}
+          SIGNATURE_PATH: ${{ steps.assets.outputs.installer_signature_path }}
           RELEASE_NOTES_PATH: ${{ steps.release_notes.outputs.body_path }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -297,8 +277,6 @@ jobs:
           files: |
             ${{ steps.assets.outputs.installer_path }}
             ${{ steps.assets.outputs.installer_signature_path }}
-            ${{ steps.assets.outputs.updater_bundle_path }}
-            ${{ steps.assets.outputs.updater_signature_path }}
             latest.json
           fail_on_unmatched_files: true
           draft: false
