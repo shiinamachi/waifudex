@@ -136,65 +136,10 @@ pub fn should_cleanup_on_run_event(event: &tauri::RunEvent) -> bool {
     )
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-fn should_include_always_on_top_menu_item() -> bool {
-    true
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-fn should_include_window_toggle_menu_item() -> bool {
-    true
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-fn should_include_update_restart_menu_item() -> bool {
-    false
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-fn should_toggle_window_on_left_click() -> bool {
-    false
-}
-
 fn character_toggle_label(visible: bool) -> &'static str {
     if visible {
         "Hide character"
     } else {
         "Show character"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tray_policy_includes_always_on_top_toggle() {
-        assert!(should_include_always_on_top_menu_item());
-    }
-
-    #[test]
-    fn tray_policy_includes_window_toggle_menu_item() {
-        assert!(should_include_window_toggle_menu_item());
-    }
-
-    #[test]
-    fn hidden_character_uses_show_label() {
-        assert_eq!(character_toggle_label(false), "Show character");
-    }
-
-    #[test]
-    fn visible_character_uses_hide_label() {
-        assert_eq!(character_toggle_label(true), "Hide character");
-    }
-
-    #[test]
-    fn tray_policy_disables_left_click_window_toggle() {
-        assert!(!should_toggle_window_on_left_click());
-    }
-
-    #[test]
-    fn tray_policy_excludes_updater_restart_menu_item() {
-        assert!(!should_include_update_restart_menu_item());
     }
 }

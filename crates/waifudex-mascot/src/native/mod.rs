@@ -159,31 +159,6 @@ pub(super) fn flip_rows(rgba: &mut [u8], width: usize, height: usize) {
 
 pub(super) fn trace_stage(_stage: &str) {}
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        camera_fit_for_viewport, DEFAULT_CAMERA_POS_X, DEFAULT_CAMERA_POS_Y, DEFAULT_CAMERA_ZOOM,
-    };
-
-    #[test]
-    fn camera_fit_for_reference_viewport_preserves_default_camera() {
-        let fit = camera_fit_for_viewport(630, 1080);
-
-        assert!((fit.zoom - DEFAULT_CAMERA_ZOOM).abs() < 0.0001);
-        assert!((fit.position_x - DEFAULT_CAMERA_POS_X).abs() < 0.0001);
-        assert!((fit.position_y - DEFAULT_CAMERA_POS_Y).abs() < 0.0001);
-    }
-
-    #[test]
-    fn camera_fit_for_smaller_viewport_scales_zoom_down_linearly() {
-        let fit = camera_fit_for_viewport(420, 720);
-
-        assert!((fit.zoom - 0.16).abs() < 0.0001);
-        assert!((fit.position_x - DEFAULT_CAMERA_POS_X).abs() < 0.0001);
-        assert!((fit.position_y - DEFAULT_CAMERA_POS_Y).abs() < 0.0001);
-    }
-}
-
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "windows")]

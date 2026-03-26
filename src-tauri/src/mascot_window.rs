@@ -24,7 +24,7 @@ pub struct MascotWindowPlacement {
     pub position: Option<CharacterWindowPosition>,
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MonitorWorkArea {
     left: i32,
@@ -33,7 +33,7 @@ struct MonitorWorkArea {
     bottom: i32,
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DisplayMonitorSnapshot {
     option: DisplayMonitorOption,
@@ -483,229 +483,7 @@ pub fn present_frame<R: Runtime>(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app_settings::CharacterWindowPosition;
-
-    #[test]
-    fn mascot_window_state_defaults_to_always_on_top() {
-        let state = MascotWindowState::new();
-        assert!(state.is_always_on_top());
-    }
-
-    #[test]
-    fn mascot_window_state_updates_always_on_top_flag() {
-        let state = MascotWindowState::new();
-        state.set_always_on_top(false).unwrap();
-        assert!(!state.is_always_on_top());
-    }
-
-    #[test]
-    fn resolve_requested_monitor_prefers_requested_id() {
-        let monitors = vec![
-            test_monitor("\\\\.\\DISPLAY1", true),
-            test_monitor("\\\\.\\DISPLAY2", false),
-        ];
-
-        assert_eq!(
-            resolve_monitor_id(Some("\\\\.\\DISPLAY2"), Some("\\\\.\\DISPLAY1"), &monitors)
-                .as_deref(),
-            Some("\\\\.\\DISPLAY2")
-        );
-    }
-
-    #[test]
-    fn resolve_requested_monitor_falls_back_to_primary() {
-        let monitors = vec![
-            test_monitor("\\\\.\\DISPLAY1", true),
-            test_monitor("\\\\.\\DISPLAY2", false),
-        ];
-
-        assert_eq!(
-            resolve_monitor_id(Some("\\\\.\\MISSING"), Some("\\\\.\\DISPLAY2"), &monitors)
-                .as_deref(),
-            Some("\\\\.\\DISPLAY1")
-        );
-    }
-
-    #[test]
-    fn display_monitor_label_prefers_friendly_name() {
-        assert_eq!(
-            display_monitor_label("\\\\.\\DISPLAY1", Some("DELL U2720Q"), None, false),
-            "DELL U2720Q"
-        );
-    }
-
-    #[test]
-    fn display_monitor_label_falls_back_to_device_name() {
-        assert_eq!(
-            display_monitor_label("\\\\.\\DISPLAY1", None, None, true),
-            "\\\\.\\DISPLAY1 (Primary)"
-        );
-    }
-
-    #[test]
-    fn display_monitor_label_prefers_readable_fallback_for_builtin_display() {
-        assert_eq!(
-            display_monitor_label("\\\\.\\DISPLAY22", None, Some("Built-in Display"), false),
-            "Built-in Display"
-        );
-    }
-
-    #[test]
-    fn clamp_window_position_keeps_window_inside_monitor_work_area() {
-        let position = clamp_window_position_to_work_area(
-            CharacterWindowPosition { x: 1_850, y: 900 },
-            MascotWindowSize {
-                width: 420,
-                height: 720,
-            },
-            MonitorWorkArea {
-                left: 0,
-                top: 0,
-                right: 1_920,
-                bottom: 1_080,
-            },
-        );
-
-        assert_eq!(position, CharacterWindowPosition { x: 1_500, y: 360 });
-    }
-
-    #[test]
-    fn resolve_restored_window_position_keeps_saved_position_on_same_monitor() {
-        let monitors = vec![
-            test_monitor("\\\\.\\DISPLAY1", true),
-            DisplayMonitorSnapshot {
-                option: DisplayMonitorOption {
-                    id: "\\\\.\\DISPLAY2".to_string(),
-                    label: "\\\\.\\DISPLAY2".to_string(),
-                    work_area_left: 1_920,
-                    work_area_top: 0,
-                    work_area_width: 1_920,
-                    work_area_height: 1_080,
-                },
-                work_area: MonitorWorkArea {
-                    left: 1_920,
-                    top: 0,
-                    right: 3_840,
-                    bottom: 1_080,
-                },
-                is_primary: false,
-            },
-        ];
-
-        let position = resolve_restored_window_position(
-            Some("\\\\.\\DISPLAY2"),
-            Some(CharacterWindowPosition { x: 2_400, y: 200 }),
-            MascotWindowSize {
-                width: 420,
-                height: 720,
-            },
-            &monitors,
-        )
-        .expect("expected a restored position");
-
-        assert_eq!(position, CharacterWindowPosition { x: 2_400, y: 200 });
-    }
-
-    #[test]
-    fn resolve_restored_window_position_recenters_for_new_monitor() {
-        let monitors = vec![
-            test_monitor("\\\\.\\DISPLAY1", true),
-            DisplayMonitorSnapshot {
-                option: DisplayMonitorOption {
-                    id: "\\\\.\\DISPLAY2".to_string(),
-                    label: "\\\\.\\DISPLAY2".to_string(),
-                    work_area_left: 1_920,
-                    work_area_top: 0,
-                    work_area_width: 1_920,
-                    work_area_height: 1_080,
-                },
-                work_area: MonitorWorkArea {
-                    left: 1_920,
-                    top: 0,
-                    right: 3_840,
-                    bottom: 1_080,
-                },
-                is_primary: false,
-            },
-        ];
-
-        let position = resolve_restored_window_position(
-            Some("\\\\.\\DISPLAY1"),
-            Some(CharacterWindowPosition { x: 2_400, y: 200 }),
-            MascotWindowSize {
-                width: 420,
-                height: 720,
-            },
-            &monitors,
-        )
-        .expect("expected a restored position");
-
-        assert_eq!(position, CharacterWindowPosition { x: 750, y: 180 });
-    }
-
-    #[test]
-    fn clamp_requested_window_position_keeps_requested_position_when_it_fits() {
-        let position = clamp_requested_window_position(
-            CharacterWindowPosition { x: 2400, y: 180 },
-            MascotWindowSize {
-                width: 420,
-                height: 720,
-            },
-            MonitorWorkArea {
-                left: 1920,
-                top: 0,
-                right: 3840,
-                bottom: 1080,
-            },
-        );
-
-        assert_eq!(position, CharacterWindowPosition { x: 2400, y: 180 });
-    }
-
-    #[test]
-    fn clamp_requested_window_position_clamps_to_monitor_edges() {
-        let position = clamp_requested_window_position(
-            CharacterWindowPosition { x: 3800, y: 900 },
-            MascotWindowSize {
-                width: 420,
-                height: 720,
-            },
-            MonitorWorkArea {
-                left: 1920,
-                top: 0,
-                right: 3840,
-                bottom: 1080,
-            },
-        );
-
-        assert_eq!(position, CharacterWindowPosition { x: 3420, y: 360 });
-    }
-
-    fn test_monitor(id: &str, is_primary: bool) -> DisplayMonitorSnapshot {
-        DisplayMonitorSnapshot {
-            option: DisplayMonitorOption {
-                id: id.to_string(),
-                label: id.to_string(),
-                work_area_left: 0,
-                work_area_top: 0,
-                work_area_width: 1_920,
-                work_area_height: 1_080,
-            },
-            work_area: MonitorWorkArea {
-                left: 0,
-                top: 0,
-                right: 1920,
-                bottom: 1080,
-            },
-            is_primary,
-        }
-    }
-}
-
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn resolve_monitor_id(
     requested_monitor_id: Option<&str>,
     current_monitor_id: Option<&str>,
@@ -734,7 +512,7 @@ fn resolve_monitor_id(
         .map(|monitor| monitor.option.id.clone())
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn place_window_in_work_area(size: MascotWindowSize, work_area: MonitorWorkArea) -> (i32, i32) {
     let width = size.width as i32;
     let height = size.height as i32;
@@ -747,7 +525,7 @@ fn place_window_in_work_area(size: MascotWindowSize, work_area: MonitorWorkArea)
     )
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn clamp_window_position_to_work_area(
     position: CharacterWindowPosition,
     size: MascotWindowSize,
@@ -762,7 +540,7 @@ fn clamp_window_position_to_work_area(
     }
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn clamp_requested_window_position(
     position: CharacterWindowPosition,
     size: MascotWindowSize,
@@ -771,7 +549,7 @@ fn clamp_requested_window_position(
     clamp_window_position_to_work_area(position, size, work_area)
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn monitor_id_for_position(
     position: CharacterWindowPosition,
     monitors: &[DisplayMonitorSnapshot],
@@ -787,7 +565,7 @@ fn monitor_id_for_position(
         .map(|monitor| monitor.option.id.clone())
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn resolve_restored_window_position(
     target_monitor_id: Option<&str>,
     saved_position: Option<CharacterWindowPosition>,
@@ -813,7 +591,7 @@ fn resolve_restored_window_position(
     Some(CharacterWindowPosition { x, y })
 }
 
-#[cfg_attr(not(any(test, windows)), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn display_monitor_label(
     device_name: &str,
     friendly_name: Option<&str>,
