@@ -29,6 +29,7 @@ pub struct AppSettings {
     pub character_scale: f64,
     pub display_monitor_id: Option<String>,
     pub character_window_position: Option<CharacterWindowPosition>,
+    pub active_model_path: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -38,6 +39,7 @@ impl Default for AppSettings {
             character_scale: 1.0,
             display_monitor_id: None,
             character_window_position: None,
+            active_model_path: None,
         }
     }
 }
@@ -49,6 +51,7 @@ pub struct AppSettingsUpdate {
     pub character_scale: Option<f64>,
     pub display_monitor_id: Option<String>,
     pub character_window_position: Option<CharacterWindowPosition>,
+    pub active_model_path: Option<String>,
 }
 
 impl AppSettingsUpdate {
@@ -65,6 +68,9 @@ impl AppSettingsUpdate {
         }
         if let Some(character_window_position) = self.character_window_position {
             settings.character_window_position = Some(character_window_position);
+        }
+        if let Some(active_model_path) = &self.active_model_path {
+            settings.active_model_path = Some(active_model_path.clone());
         }
     }
 }

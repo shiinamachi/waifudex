@@ -86,6 +86,12 @@ impl MascotRenderer {
         }
     }
 
+    pub fn load_model(&mut self, model_path: &Path) -> Result<()> {
+        let puppet = PuppetRenderer::new(model_path)?;
+        self.puppet = puppet;
+        Ok(())
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) -> Result<()> {
         self.context.resize(width, height);
         let (width, height) = self.context.dimensions();

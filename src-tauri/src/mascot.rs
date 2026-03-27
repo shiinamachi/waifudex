@@ -28,11 +28,11 @@ struct ActiveMascot {
     thread: Option<JoinHandle<()>>,
 }
 
-#[derive(Debug)]
 enum RenderCommand {
     UpdateParams(Vec<MascotParamValue>),
     SetStatus(RuntimeStatus),
     Resize { width: u32, height: u32 },
+    LoadModel(PathBuf, mpsc::SyncSender<Result<Vec<String>, String>>),
     Shutdown,
 }
 
@@ -123,6 +123,33 @@ impl MascotManager {
         })
     }
 
+    pub fn load_model(
+        &self,
+        app_handle: &AppHandle,
+        model_path: String,
+    ) -> Result<Vec<String>, String> {
+        let resolved = resolve_model_path(app_handle, &model_path)
+            .ok_or_else(|| format!("mascot model path could not be resolved: {model_path}"))?;
+        let (result_sender, result_receiver) = mpsc::sync_channel(1);
+        self.with_active_mut(|active| {
+            active
+                .sender
+                .send(RenderCommand::LoadModel(resolved, result_sender))
+                .map_err(|_| "mascot render thread is not available".to_string())
+        })?;
+        let available_params = result_receiver
+            .recv()
+            .map_err(|_| "mascot render thread did not respond to load_model".to_string())??;
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| "mascot manager mutex poisoned".to_string())?;
+        if let Some(active) = guard.as_mut() {
+            active.available_params = available_params.clone();
+        }
+        Ok(available_params)
+    }
+
     pub fn set_status(&self, status: RuntimeStatus) -> Result<(), String> {
         self.with_active_mut(|active| {
             active
@@ -167,12 +194,11 @@ pub fn initialize_default_mascot(app_handle: &AppHandle) -> Result<Vec<String>, 
     let size = app_handle
         .state::<crate::mascot_window::MascotWindowState>()
         .size();
-    manager.init(
-        app_handle.clone(),
-        "/models/Aka.inx".to_string(),
-        size.width,
-        size.height,
-    )
+    let settings = crate::app_settings::current_app_settings(app_handle);
+    let model_path = settings
+        .active_model_path
+        .unwrap_or_else(|| "/models/Aka.inx".to_string());
+    manager.init(app_handle.clone(), model_path, size.width, size.height)
 }
 
 pub fn resize<R: Runtime>(app: &AppHandle<R>, width: u32, height: u32) -> tauri::Result<()> {
@@ -182,7 +208,12 @@ pub fn resize<R: Runtime>(app: &AppHandle<R>, width: u32, height: u32) -> tauri:
         .map_err(|e| tauri::Error::from(std::io::Error::other(e)))
 }
 
-fn resolve_model_path(app_handle: &AppHandle, model_path: &str) -> Option<PathBuf> {
+pub fn switch_model(app_handle: &AppHandle, model_path: String) -> Result<Vec<String>, String> {
+    let manager = app_handle.state::<MascotManager>();
+    manager.load_model(app_handle, model_path)
+}
+
+pub fn resolve_model_path(app_handle: &AppHandle, model_path: &str) -> Option<PathBuf> {
     let raw_path = PathBuf::from(model_path);
     if raw_path.is_absolute() && raw_path.exists() {
         return Some(raw_path);
@@ -271,6 +302,16 @@ fn render_loop(
                 }
                 RenderCommand::Resize { width, height } => {
                     let _ = renderer.resize(width, height);
+                }
+                RenderCommand::LoadModel(path, reply) => {
+                    let result = renderer.load_model(&path).map(|()| {
+                        renderer
+                            .available_params()
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect::<Vec<_>>()
+                    });
+                    let _ = reply.send(result.map_err(|e| e.to_string()));
                 }
                 RenderCommand::Shutdown => {
                     running = false;
