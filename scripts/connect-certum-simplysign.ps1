@@ -53,6 +53,20 @@ function Get-OptionalBooleanEnvironmentVariable {
     }
 }
 
+function Get-OptionalStringEnvironmentVariable {
+    param(
+        [string]$Name,
+        [string]$DefaultValue
+    )
+
+    $value = [Environment]::GetEnvironmentVariable($Name)
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $DefaultValue
+    }
+
+    return $value
+}
+
 function Get-QueryValue {
     param(
         [string]$Query,
@@ -199,6 +213,72 @@ function Restart-SimplySignDesktop {
     }
 }
 
+function Get-SimplySignProcesses {
+    Get-Process -Name "SimplySignDesktop" -ErrorAction SilentlyContinue |
+        Sort-Object StartTime
+}
+
+function Write-SimplySignProcessSnapshot {
+    $processes = @(Get-SimplySignProcesses)
+    if ($processes.Count -eq 0) {
+        Write-Host "No SimplySignDesktop processes are currently running."
+        return
+    }
+
+    Write-Host "Detected SimplySignDesktop processes:"
+    foreach ($process in $processes) {
+        $windowTitle = ""
+        $windowHandle = 0
+        try {
+            $windowTitle = $process.MainWindowTitle
+            $windowHandle = $process.MainWindowHandle
+        }
+        catch {
+            $windowTitle = ""
+            $windowHandle = 0
+        }
+
+        Write-Host ("- Id={0} MainWindowHandle={1} Title='{2}'" -f $process.Id, $windowHandle, $windowTitle)
+    }
+}
+
+function Try-ActivateWindowHandle {
+    param([System.Diagnostics.Process]$Process)
+
+    if (-not $Process) {
+        return $false
+    }
+
+    try {
+        $Process.Refresh()
+        if (-not $Process.MainWindowHandle -or $Process.MainWindowHandle -eq 0) {
+            return $false
+        }
+
+        if (-not ("Win32ForegroundWindow" -as [type])) {
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class Win32ForegroundWindow {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+}
+"@
+        }
+
+        [void][Win32ForegroundWindow]::ShowWindowAsync($Process.MainWindowHandle, 5)
+        Start-Sleep -Milliseconds 200
+        return [Win32ForegroundWindow]::SetForegroundWindow($Process.MainWindowHandle)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Wait-ForWindowActivation {
     param(
         [object]$Shell,
@@ -208,10 +288,22 @@ function Wait-ForWindowActivation {
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $diagnosticsWritten = $false
 
     while ((Get-Date) -lt $deadline) {
         $activatedById = $false
         $activatedByCaption = $false
+        $activatedByHandle = $false
+        $matchingProcess = $null
+
+        $candidateProcesses = @()
+        if ($Process) {
+            $candidateProcesses += $Process
+        }
+        $candidateProcesses += @(Get-SimplySignProcesses)
+        $candidateProcesses = $candidateProcesses |
+            Group-Object Id |
+            ForEach-Object { $_.Group[0] }
 
         try {
             $activatedById = $Shell.AppActivate($Process.Id)
@@ -220,7 +312,40 @@ function Wait-ForWindowActivation {
             $activatedById = $false
         }
 
-        if (-not $activatedById -and -not [string]::IsNullOrWhiteSpace($Caption)) {
+        if (-not $activatedById) {
+            foreach ($candidateProcess in $candidateProcesses) {
+                try {
+                    if ($Shell.AppActivate($candidateProcess.Id)) {
+                        $activatedById = $true
+                        $matchingProcess = $candidateProcess
+                        break
+                    }
+                }
+                catch {
+                }
+            }
+        }
+
+        if (-not $activatedById) {
+            foreach ($candidateProcess in $candidateProcesses) {
+                try {
+                    $candidateProcess.Refresh()
+                    if ([string]::IsNullOrWhiteSpace($candidateProcess.MainWindowTitle)) {
+                        continue
+                    }
+
+                    if ($Shell.AppActivate($candidateProcess.MainWindowTitle)) {
+                        $activatedByCaption = $true
+                        $matchingProcess = $candidateProcess
+                        break
+                    }
+                }
+                catch {
+                }
+            }
+        }
+
+        if (-not $activatedById -and -not $activatedByCaption -and -not [string]::IsNullOrWhiteSpace($Caption)) {
             try {
                 $activatedByCaption = $Shell.AppActivate($Caption)
             }
@@ -229,15 +354,36 @@ function Wait-ForWindowActivation {
             }
         }
 
-        if ($activatedById -or $activatedByCaption) {
-            if ($activatedById) {
-                Write-Host "Activated SimplySign Desktop window by process id."
+        if (-not $activatedById -and -not $activatedByCaption) {
+            foreach ($candidateProcess in $candidateProcesses) {
+                if (Try-ActivateWindowHandle -Process $candidateProcess) {
+                    $activatedByHandle = $true
+                    $matchingProcess = $candidateProcess
+                    break
+                }
+            }
+        }
+
+        if ($activatedById -or $activatedByCaption -or $activatedByHandle) {
+            if ($activatedById -and $matchingProcess) {
+                Write-Host ("Activated SimplySign Desktop window by process id: {0}" -f $matchingProcess.Id)
+            }
+            elseif ($activatedByCaption -and $matchingProcess) {
+                Write-Host ("Activated SimplySign Desktop window by process title: {0}" -f $matchingProcess.MainWindowTitle)
+            }
+            elseif ($activatedByCaption) {
+                Write-Host ("Activated SimplySign Desktop window by caption fallback: {0}" -f $Caption)
             }
             else {
-                Write-Host "Activated SimplySign Desktop window by caption."
+                Write-Host ("Activated SimplySign Desktop window by handle for process id: {0}" -f $matchingProcess.Id)
             }
             Start-Sleep -Milliseconds 500
             return
+        }
+
+        if (-not $diagnosticsWritten) {
+            Write-SimplySignProcessSnapshot
+            $diagnosticsWritten = $true
         }
 
         Write-Host "Waiting for SimplySign Desktop window focus..."
@@ -290,6 +436,8 @@ $userId = Get-RequiredEnvironmentVariable -Name "CERTUM_USERID"
 $exePath = Get-RequiredEnvironmentVariable -Name "CERTUM_EXE_PATH"
 $otpTabCount = Get-OptionalIntegerEnvironmentVariable -Name "CERTUM_LOGIN_TABS_TO_OTP" -DefaultValue 1
 $skipUserIdInput = Get-OptionalBooleanEnvironmentVariable -Name "CERTUM_SKIP_USERID_INPUT" -DefaultValue $false
+$windowActivationTimeoutSeconds = Get-OptionalIntegerEnvironmentVariable -Name "CERTUM_WINDOW_ACTIVATION_TIMEOUT_SECONDS" -DefaultValue 60
+$windowCaption = Get-OptionalStringEnvironmentVariable -Name "CERTUM_WINDOW_CAPTION" -DefaultValue "SimplySign"
 
 if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
     throw "SimplySign Desktop executable not found: $exePath"
@@ -303,8 +451,15 @@ Restart-SimplySignDesktop
 Write-Host "Starting SimplySign Desktop..."
 $process = Start-Process -FilePath $exePath -PassThru
 try {
+    try {
+        $null = $process.WaitForInputIdle(15000)
+    }
+    catch {
+        Write-Host "SimplySign Desktop did not report input-idle within 15 seconds. Continuing with active polling."
+    }
+
     $shell = New-Object -ComObject WScript.Shell
-    Wait-ForWindowActivation -Shell $shell -Process $process -Caption "SimplySign Desktop"
+    Wait-ForWindowActivation -Shell $shell -Process $process -Caption $windowCaption -TimeoutSeconds $windowActivationTimeoutSeconds
 
     Write-Host "Sending SimplySign Desktop credentials..."
     Write-Host "OTP field tab count: $otpTabCount"
