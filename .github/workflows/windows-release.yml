@@ -203,9 +203,85 @@ jobs:
           $signingKeyPath = Join-Path $PWD "production.key"
           [System.IO.File]::WriteAllText($signingKeyPath, $env:TAURI_SIGNING_PRIVATE_KEY)
 
+      - name: Install Certum SimplySign Desktop
+        id: simplysign
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          $catalogUrl = "https://support.certum.eu/en/cert-offer-software-and-libraries/"
+          $catalogResponse = Invoke-WebRequest -Uri $catalogUrl
+          $installerLink = $catalogResponse.Links |
+            Where-Object { $_.href -match 'SimplySignDesktop-([0-9.]+)-64-bit-en\.msi$' } |
+            Sort-Object { [version]([regex]::Match($_.href, 'SimplySignDesktop-([0-9.]+)-64-bit-en\.msi$').Groups[1].Value) } -Descending |
+            Select-Object -First 1
+
+          if (-not $installerLink) {
+            throw "Failed to locate the latest SimplySign Desktop 64-bit MSI link on $catalogUrl."
+          }
+
+          $installerUrl = if ($installerLink.href -match '^https?://') {
+            $installerLink.href
+          }
+          else {
+            [System.Uri]::new([System.Uri]$catalogUrl, $installerLink.href).AbsoluteUri
+          }
+
+          $installerPath = Join-Path $env:RUNNER_TEMP "SimplySignDesktop-64-bit.msi"
+          Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+          Write-Host "Using SimplySign Desktop installer: $installerUrl"
+
+          $install = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $installerPath, "/qn", "/norestart") -PassThru -Wait
+          if ($install.ExitCode -ne 0) {
+            throw "SimplySign Desktop installation failed with exit code $($install.ExitCode)."
+          }
+
+          $candidateRoots = @($env:ProgramFiles)
+          if ($env:'ProgramFiles(x86)') {
+            $candidateRoots += $env:'ProgramFiles(x86)'
+          }
+
+          $candidatePaths = @(
+            (Join-Path $env:ProgramFiles "SimplySign Desktop\\SimplySignDesktop.exe"),
+            (Join-Path $env:ProgramFiles "SimplySignDesktop\\SimplySignDesktop.exe")
+          )
+
+          if ($env:'ProgramFiles(x86)') {
+            $candidatePaths += @(
+              (Join-Path $env:'ProgramFiles(x86)' "SimplySign Desktop\\SimplySignDesktop.exe"),
+              (Join-Path $env:'ProgramFiles(x86)' "SimplySignDesktop\\SimplySignDesktop.exe")
+            )
+          }
+
+          $exePath = $candidatePaths |
+            Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+            Select-Object -First 1
+
+          if (-not $exePath) {
+            $exePath = Get-ChildItem -Path $candidateRoots -Filter "SimplySignDesktop*.exe" -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+          }
+
+          if (-not $exePath) {
+            throw "Failed to locate SimplySignDesktop.exe after installation."
+          }
+
+          "exe_path=$exePath" >> $env:GITHUB_OUTPUT
+
+      - name: Authenticate Certum SimplySign Desktop
+        shell: pwsh
+        env:
+          CERTUM_CERT_SHA1: ${{ secrets.CERTUM_CERT_SHA1 }}
+          CERTUM_EXE_PATH: ${{ steps.simplysign.outputs.exe_path }}
+          CERTUM_OTP_URI: ${{ secrets.CERTUM_OTP_URI }}
+          CERTUM_USERID: ${{ secrets.CERTUM_USERID }}
+        run: .\scripts\connect-certum-simplysign.ps1
+
       - name: Build signed Windows updater release
         shell: pwsh
         env:
+          CERTUM_CERT_SHA1: ${{ secrets.CERTUM_CERT_SHA1 }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: .\scripts\tauri-release-windows-host.ps1
 
@@ -250,6 +326,10 @@ jobs:
           "installer_path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
           "installer_name=$($installer.Name)" >> $env:GITHUB_OUTPUT
           "installer_signature_path=$($installerSignature.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Verify Authenticode signature
+        shell: pwsh
+        run: .\scripts\verify-certum-signature.ps1 "${{ steps.assets.outputs.installer_path }}"
 
       - name: Generate latest.json
         shell: pwsh
