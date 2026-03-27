@@ -13,8 +13,8 @@ function Get-SignToolPath {
     }
 
     $roots = @()
-    if ($env:'ProgramFiles(x86)') {
-        $roots += (Join-Path $env:'ProgramFiles(x86)' "Windows Kits\10\bin")
+    if (${env:ProgramFiles(x86)}) {
+        $roots += (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin")
     }
     if ($env:ProgramFiles) {
         $roots += (Join-Path $env:ProgramFiles "Windows Kits\10\bin")

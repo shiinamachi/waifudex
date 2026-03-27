@@ -238,8 +238,8 @@ jobs:
           }
 
           $candidateRoots = @($env:ProgramFiles)
-          if ($env:'ProgramFiles(x86)') {
-            $candidateRoots += $env:'ProgramFiles(x86)'
+          if (${env:ProgramFiles(x86)}) {
+            $candidateRoots += ${env:ProgramFiles(x86)}
           }
 
           $candidatePaths = @(
@@ -247,10 +247,10 @@ jobs:
             (Join-Path $env:ProgramFiles "SimplySignDesktop\\SimplySignDesktop.exe")
           )
 
-          if ($env:'ProgramFiles(x86)') {
+          if (${env:ProgramFiles(x86)}) {
             $candidatePaths += @(
-              (Join-Path $env:'ProgramFiles(x86)' "SimplySign Desktop\\SimplySignDesktop.exe"),
-              (Join-Path $env:'ProgramFiles(x86)' "SimplySignDesktop\\SimplySignDesktop.exe")
+              (Join-Path ${env:ProgramFiles(x86)} "SimplySign Desktop\\SimplySignDesktop.exe"),
+              (Join-Path ${env:ProgramFiles(x86)} "SimplySignDesktop\\SimplySignDesktop.exe")
             )
           }
 
