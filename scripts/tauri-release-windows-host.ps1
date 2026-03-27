@@ -30,6 +30,7 @@ try {
     Set-Location -LiteralPath $rootPath
     $generatedTauriConfigPath = Join-Path $rootPath "src-tauri\tauri.windows.build.generated.json"
     $certumSignScriptPath = Join-Path $rootPath "scripts\invoke-certum-signtool.ps1"
+    $powershellPath = (Get-Command "powershell.exe" -ErrorAction Stop).Source
 
     $signingKeyPath = Join-Path $rootPath "production.key"
     if (-not (Test-Path -LiteralPath $signingKeyPath -PathType Leaf)) {
@@ -40,6 +41,9 @@ try {
     }
     if (-not (Test-Path Env:CERTUM_CERT_SHA1) -or [string]::IsNullOrWhiteSpace($env:CERTUM_CERT_SHA1)) {
         throw "CERTUM_CERT_SHA1 is required for Windows Authenticode signing."
+    }
+    if (-not (Test-Path -LiteralPath $powershellPath -PathType Leaf)) {
+        throw "powershell.exe was not found: $powershellPath"
     }
 
     $env:TAURI_SIGNING_PRIVATE_KEY = [System.IO.File]::ReadAllText($signingKeyPath)
@@ -64,7 +68,17 @@ try {
         $generatedConfig.bundle | Add-Member -MemberType NoteProperty -Name windows -Value ([pscustomobject]@{})
     }
 
-    $signCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$certumSignScriptPath`" `"%1`""
+    $signCommand = [pscustomobject]@{
+        cmd = $powershellPath
+        args = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $certumSignScriptPath,
+            "%1"
+        )
+    }
     if (Get-Member -InputObject $generatedConfig.bundle.windows -Name signCommand -MemberType NoteProperty -ErrorAction SilentlyContinue) {
         $generatedConfig.bundle.windows.signCommand = $signCommand
     }
@@ -73,7 +87,7 @@ try {
     }
 
     $generatedConfig | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $generatedTauriConfigPath -Encoding UTF8
-    Write-Host "Injected Windows signCommand into $generatedTauriConfigPath"
+    Write-Host "Injected Windows signCommand into $generatedTauriConfigPath using $powershellPath"
 
     $vitePath = node -e "const path=require('node:path'); process.stdout.write(path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js'));"
     $tauriPath = node -e "const path=require('node:path'); process.stdout.write(path.join(path.dirname(require.resolve('@tauri-apps/cli/package.json')), 'tauri.js'));"
