@@ -34,6 +34,7 @@ export const modelCard = style({
   alignItems: "center",
   justifyContent: "space-between",
   gap: tokens.spacingHorizontalM,
+  width: "100%",
 });
 
 export const modelCardInfo = style({
