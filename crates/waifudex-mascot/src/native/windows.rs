@@ -200,6 +200,27 @@ impl NativeMascotRenderer {
         Ok(())
     }
 
+    pub fn load_model(&mut self, model_path: &Path) -> Result<()> {
+        if !model_path.exists() {
+            return Err(MascotError::ModelNotFound(model_path.to_path_buf()));
+        }
+
+        make_current(self.window.device_context, self.context)?;
+        unsafe {
+            inPuppetDestroy(self.puppet.as_ptr());
+        }
+
+        let puppet = load_puppet(model_path)?;
+        let params = load_params(puppet);
+        let param_infos = params.iter().map(|param| param.info.clone()).collect();
+
+        self.puppet = puppet;
+        self.params = params;
+        self.param_infos = param_infos;
+        self.dirty = true;
+        Ok(())
+    }
+
     pub fn available_params(&self) -> &[ParamInfo] {
         &self.param_infos
     }

@@ -16,6 +16,7 @@ export interface AppSettings {
   characterScale: number;
   displayMonitorId: string | null;
   characterWindowPosition: CharacterWindowPosition | null;
+  activeModelPath: string | null;
 }
 
 export interface AppSettingsUpdate {
@@ -23,6 +24,7 @@ export interface AppSettingsUpdate {
   characterScale?: number;
   displayMonitorId?: string | null;
   characterWindowPosition?: CharacterWindowPosition | null;
+  activeModelPath?: string | null;
 }
 
 interface AppSettingsStoreSnapshot {
@@ -35,6 +37,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   characterScale: 1.0,
   displayMonitorId: null,
   characterWindowPosition: null,
+  activeModelPath: null,
 };
 
 let snapshot: AppSettingsStoreSnapshot = {

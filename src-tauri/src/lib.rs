@@ -6,6 +6,7 @@ pub mod codex;
 pub mod contracts;
 pub mod external_link;
 pub mod mascot;
+pub mod mascot_commands;
 pub mod mascot_motion;
 pub mod mascot_window;
 pub mod runtime_state;
@@ -40,7 +41,11 @@ pub fn run() {
             window::get_character_visibility,
             window::set_character_visibility,
             mascot_window::get_display_monitors,
-            mascot_window::move_character_window_command
+            mascot_window::move_character_window_command,
+            mascot_commands::list_models,
+            mascot_commands::add_model,
+            mascot_commands::delete_model,
+            mascot_commands::switch_model_command
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
