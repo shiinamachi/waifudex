@@ -1,10 +1,10 @@
-$ErrorActionPreference = "Stop"
-$PSNativeCommandUseErrorActionPreference = $true
-
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$TargetPath
 )
+
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 function Get-RequiredEnvironmentVariable {
     param([string]$Name)
