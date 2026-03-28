@@ -48,7 +48,7 @@ function Get-SignToolPath {
     throw "signtool.exe was not found on PATH or under Windows Kits."
 }
 
-$certThumbprint = (Get-RequiredEnvironmentVariable -Name "CERTUM_CERT_SHA1" -replace "\s", "").ToUpperInvariant()
+$certThumbprint = ((Get-RequiredEnvironmentVariable -Name "CERTUM_CERT_SHA1") -replace "\s", "").ToUpperInvariant()
 $signtoolPath = Get-SignToolPath
 
 if (-not (Test-Path -LiteralPath $TargetPath -PathType Leaf)) {
